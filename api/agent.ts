@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
-import { apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
+import { jadvalTayyorla, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
 // Rejali Claude shu API orqali navbatni o'qiydi va natija yuboradi.
 // Kirish: Authorization: Bearer <AGENT_SECRET>
@@ -15,6 +15,7 @@ function ruxsat(req: VercelRequest) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ruxsat(req)) return res.status(401).json({ xato: "unauthorized" });
   try {
+    await jadvalTayyorla();
     if (req.method === "GET") return res.status(200).json({ vazifalar: await apiNavbat() });
     if (req.method !== "POST") return res.status(405).json({ xato: "method" });
     const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body ?? {};
