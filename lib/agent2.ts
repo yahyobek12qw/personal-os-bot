@@ -78,7 +78,7 @@ export async function postYarat(m: any, media: { fileId: string; tur: string; si
   if ((media.size ?? 0) > 20 * 1024 * 1024) return yubor(m.chat.id, "Fayl 20 MB dan katta — bot uni yuklab ololmaydi. Siqib qayta yuboring.", undefined, m.message_id);
   const natija = { matn: caption, caption: igHavola(caption), tg_matn: tgHavola(caption), tg_file_id: media.fileId, media_tur: media.tur, hajm: media.size ?? null, manba: "egasi" };
   const r = (await q(
-    `insert into agent_vazifalar (loyiha, tur, buyruq, holat, natija, taxmin_daq) values ('productcrm', 'post', $1, 'tasdiq', $2::jsonb, 5) returning id`,
+    `insert into agent_vazifalar (loyiha, tur, buyruq, holat, natija, taxmin_daq) values ('studiya', 'post', $1, 'tasdiq', $2::jsonb, 5) returning id`,
     [`Post: ${caption.split("\n")[0].slice(0, 60) || (media.tur === "video" ? "video" : "rasm")}`, JSON.stringify(natija)],
   ))[0];
   const k = await kanal();

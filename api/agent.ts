@@ -7,7 +7,7 @@ import { tgHavola } from "../lib/havolalar";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
 import { savolEslatma, guruh, faqBirlashtir, testYoq } from "../lib/guruh";
-import { agentIshlari, agentTugun, agentTugunYangi, agentBuyruqOqildi } from "../lib/studio";
+import { agentIshlari, agentTugun, agentTugunYangi, agentBuyruqOqildi, kutubxonaSaqla } from "../lib/studio";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -20,7 +20,7 @@ const AGENT_BUYRUQLAR = [
   { command: "kanal", description: "📢 Telegram kanal holati" },
   { command: "guruh", description: "👥 Muhokama guruhi holati" },
   { command: "faq", description: "📚 Guruhdagi bot javoblari (FAQ)" },
-  { command: "studio", description: "🎛 Kontent Studio — cheksiz doska" },
+  { command: "studio", description: "🎛 Studiya — agent va to‘liq studiya" },
 ];
 import { jadvalTayyorla, apiKontekst, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
@@ -120,6 +120,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(await agentTugun(b));
       case "tugun_yangi":
         return res.status(200).json(await agentTugunYangi(b));
+      case "kutubxona":
+        // Agent kutubxona elementini yaratadi yoki yangilaydi (masalan, klon ovoz namunasi, qahramon renderlari). holat: faol | tekshiruvda | xato
+        return res.status(200).json(await kutubxonaSaqla(b, "agent"));
       case "studio_buyruq":
         return res.status(200).json(await agentBuyruqOqildi(Number(b.loyiha_id)));
       case "holat":
@@ -139,7 +142,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "xabar":
         return res.status(200).json(await apiXabar(String(b.matn ?? "")));
       default:
-        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | yangi | kanal | taklif | xabar | tugun | tugun_yangi | studio_buyruq" });
+        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | yangi | kanal | taklif | xabar | tugun | tugun_yangi | studio_buyruq | kutubxona" });
     }
   } catch (e) {
     console.error(e);

@@ -22,7 +22,7 @@ export const HOLAT_BELGI: Record<string, string> = {
   xato: "⚠️ Xato",
 };
 
-const LOYIHALAR: Record<string, string> = { productcrm: "product CRM", eduflow: "EduFlow" };
+const LOYIHALAR: Record<string, string> = { studiya: "Studiya", productcrm: "product CRM", eduflow: "EduFlow" };
 
 // Rejali Claude ishga tushadigan vaqtlar (Toshkent). Rejali vazifa jadvali bilan bir xil bo'lishi shart.
 export const JADVAL = Array.from({ length: 17 }, (_, i) => `${String(6 + i).padStart(2, "0")}:45`); // 06:45 … 22:45
@@ -87,15 +87,15 @@ export async function jadvalTayyorla() {
   tayyor = true;
 }
 
-// "/kontent eduflow: ..." yoki "/kontent ..." (standart: product CRM)
+// "/kontent eduflow: ..." yoki "/kontent ..." (standart: Studiya — umumiy kontent)
 export function buyruqniAjrat(arg: string): { loyiha: string; buyruq: string } {
   const m = arg.match(/^(productcrm|crm|eduflow|edu)\s*[:\-]\s*(.+)$/is);
-  if (!m) return { loyiha: "productcrm", buyruq: arg.trim() };
+  if (!m) return { loyiha: "studiya", buyruq: arg.trim() };
   const l = m[1].toLowerCase();
   return { loyiha: l.startsWith("edu") ? "eduflow" : "productcrm", buyruq: m[2].trim() };
 }
 
-export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", rasmpost: "Rasmli post", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob", studio: "Studio" };
+export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", rasmpost: "Rasmli post", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob", studio: "Studiya" };
 export async function navbatgaQosh(arg: string, turMajburiy?: string) {
   await jadvalTayyorla();
   const { loyiha, buyruq } = buyruqniAjrat(arg);
@@ -153,14 +153,14 @@ async function kunlikYarat() {
     && (await q(`select exists (select 1 from studio_loyiha where holat = 'faol') b`))[0]?.b;
   if (studio) turlar.add("kunlik");
   if (!turlar.has("hisobot"))
-    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'hisobot', $1, $2, 10)`,
+    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('studiya', 'hisobot', $1, $2, 10)`,
       [`Kunlik akkaunt hisoboti — ${kun}`, kun]);
   if (!turlar.has("kunlik"))
-    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'kunlik', $1, $2, 60)`,
+    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('studiya', 'kunlik', $1, $2, 60)`,
       [`Kunlik video — ${kun}: research → g‘oya → ssenariy → video`, kun]);
   const hk = t.getUTCDay() || 7;
   if (!turlar.has("rasmpost") && (await postKunlari()).includes(hk))
-    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'rasmpost', $1, $2, 20)`,
+    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('studiya', 'rasmpost', $1, $2, 20)`,
       [`Rasmli post — ${kun}: karusel yoki bitta rasm (Instagram + Telegram)`, kun]);
 }
 
@@ -804,7 +804,7 @@ export async function apiHolat(id: number, holat: string, izoh?: string, havola?
 }
 
 export async function apiYangi(b: { loyiha?: string; tur?: string; buyruq: string; ota_id?: number; taxmin_daq?: number }) {
-  const id = await vazifaYarat(b.loyiha ?? "productcrm", b.tur ?? "kontent", b.buyruq, b.ota_id, b.taxmin_daq);
+  const id = await vazifaYarat(b.loyiha ?? "studiya", b.tur ?? "kontent", b.buyruq, b.ota_id, b.taxmin_daq);
   await panelYangila();
   return { id };
 }
