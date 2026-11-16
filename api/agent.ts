@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
+import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
@@ -68,7 +69,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(await apiJarayon(id, String(b.bosqich ?? ""), b.taxmin_daq ? Number(b.taxmin_daq) : undefined));
       case "natija":
         if (!b.matn) return res.status(400).json({ xato: "matn kerak" });
-        return res.status(200).json(await apiNatija(id, { matn: b.matn, media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh, caption: b.caption, toliq_url: b.toliq_url }));
+        return res.status(200).json(await apiNatija(id, { matn: b.matn, media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh, caption: b.caption, toliq_url: b.toliq_url, tg_matn: b.tg_matn, media_urls: Array.isArray(b.media_urls) ? b.media_urls.map(String) : undefined }));
+      case "natija_qosh": {
+        // Natijaga jim qo'shimcha (xabar yubormaydi): masalan, tuzatilgan media_urls/tg_matn
+        const ruxsat = ["tg_matn", "caption", "media_urls", "media_url", "media_tur", "toliq_url"];
+        const qism = Object.fromEntries(Object.entries(b.natija ?? {}).filter(([k]) => ruxsat.includes(k)));
+        await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(qism)]);
+        return res.status(200).json({ ok: true, qoshildi: Object.keys(qism) });
+      }
+      case "kanal_ochir": {
+        // Ulangan kanaldagi bot postini o'chirish (xato joylangan post uchun)
+        const k = (await q(`select qiymat from agent_sozlama where kalit = 'tg_kanal'`))[0]?.qiymat;
+        if (!k) return res.status(400).json({ xato: "kanal ulanmagan" });
+        const ids: number[] = (Array.isArray(b.message_ids) ? b.message_ids : [b.message_id]).map(Number).filter(Boolean);
+        for (const m of ids) await tg("deleteMessage", { chat_id: k.id, message_id: m });
+        return res.status(200).json({ ok: true, ochirildi: ids });
+      }
       case "holat":
         return res.status(200).json(await apiHolat(id, String(b.holat), b.izoh, b.havola, Boolean(b.jim)));
       case "yangi":

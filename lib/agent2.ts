@@ -56,6 +56,7 @@ export async function kanalgaJoyla(id: number, matnUstidan?: string) {
   if (rasmlar.length > 1) {
     const g = await tg("sendMediaGroup", { chat_id: k.id, media: rasmlar.map((u, i) => ({ type: "photo", media: u, ...(i === 0 && caption ? { caption } : {}) })) });
     m = g[0];
+    await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || jsonb_build_object('tg_xabarlar', $2::jsonb) where id = $1`, [id, JSON.stringify(g.map((x: any) => x.message_id))]);
   } else if (manba && n.media_tur === "video") m = await tg("sendVideo", { chat_id: k.id, video: manba, caption, supports_streaming: true });
   else if ((manba || rasmlar[0]) && n.media_tur === "rasm") m = await tg("sendPhoto", { chat_id: k.id, photo: manba || rasmlar[0], caption });
   else m = await tg("sendMessage", { chat_id: k.id, text: toliq });
