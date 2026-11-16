@@ -54,11 +54,11 @@ h1,h2,h3{margin:0;font-family:var(--serif);font-weight:400;letter-spacing:-.01em
 .tl:last-child .m i{display:none}.tl:last-child .b{padding-bottom:4px}
 .done .nm{text-decoration:line-through;color:var(--mut)}
 nav{position:fixed;left:0;right:0;bottom:0;height:calc(80px + env(safe-area-inset-bottom));padding:10px 8px env(safe-area-inset-bottom);background:var(--navbg);border-top:.5px solid var(--line);display:flex;align-items:flex-start;justify-content:space-around;z-index:5;backdrop-filter:blur(12px)}
-nav button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;width:62px;height:50px;font-size:11px;font-weight:500;color:var(--mut2)}
+nav button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;width:54px;height:50px;font-size:11px;font-weight:500;color:var(--mut2)}
 nav button svg{stroke:currentColor}
 nav button.on{color:var(--ink);font-weight:600}
 nav button.on::after{content:"";position:absolute;bottom:-4px;width:4px;height:4px;border-radius:2px;background:var(--clay)}
-nav .plus{width:56px;height:56px;margin-top:-26px;border-radius:20px;background:var(--clay);color:#fff;box-shadow:0 8px 20px rgba(217,119,87,.45);border:4px solid var(--bg);justify-content:center}
+nav .plus{width:54px;height:54px;margin-top:-26px;border-radius:20px;background:var(--clay);color:#fff;box-shadow:0 8px 20px rgba(217,119,87,.45);border:4px solid var(--bg);justify-content:center}
 nav .badge{position:absolute;top:0;right:10px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--clay);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
 #veil{position:fixed;inset:0;background:rgba(20,20,19,.4);opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 #veil.on{opacity:1;pointer-events:auto}
@@ -99,6 +99,14 @@ textarea.inp{resize:none;line-height:1.5}
 .mood button{flex:1;height:40px;border-radius:12px;background:var(--soft);font-size:12px;font-weight:500;color:var(--mut)}
 .mood button.on{background:var(--ink);color:var(--bg)}
 mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3px}
+.ag-step{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.4;padding:5px 0}
+.ag-step .d{flex:none;width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:11px;margin-top:1px}
+.ag-step.ok .d{background:var(--ok);color:#fff}.ag-step.now .d{background:var(--clay);color:#fff;animation:pl 1.2s infinite}.ag-step.yoq .d{border:1.5px solid var(--line2)}
+.ag-step.yoq{color:var(--mut)}.ag-step.now{font-weight:600}
+.ag-res{white-space:pre-wrap;font-size:14px;line-height:1.5;max-height:220px;overflow:hidden;position:relative}
+.ag-res.full{max-height:none}
+.ag-res:not(.full)::after{content:"";position:absolute;left:0;right:0;bottom:0;height:60px;background:linear-gradient(transparent,var(--card))}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ok)}.live i{width:8px;height:8px;border-radius:4px;background:var(--ok);animation:pl 1.4s infinite}
 </style>
 </head>
 <body>
@@ -108,6 +116,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
   <button data-act="tab" data-tab="kalendar" aria-label="Kalendar"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Kalendar</button>
   <button data-act="tez" class="plus" aria-label="Yangi qo‘shish"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   <button data-act="tab" data-tab="sohalar" aria-label="Sohalar"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>Sohalar</button>
+  <button data-act="tab" data-tab="agent" aria-label="Agent"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>Agent<span class="badge" id="abadge" hidden></span></button>
   <button data-act="tab" data-tab="inbox" aria-label="Inbox"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5 5h14l2 8v6H3v-6z"/></svg>Inbox<span class="badge" id="ibadge" hidden></span></button>
 </nav>
 <div id="veil" data-act="close"></div>
@@ -191,7 +200,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
 
   // ---------- holat ----------
   const S = { tab: 'bugun', stek: [], data: {}, par: {}, sohalar: null, sfil: 'hammasi', kun: bugun(), oy: bugun().slice(0, 7), qSoz: '' };
-  const TABS = ['bugun', 'kalendar', 'sohalar', 'inbox'];
+  const TABS = ['bugun', 'kalendar', 'sohalar', 'agent', 'inbox'];
   const V = {};
   const kalit = (tab, par) => tab + ':' + JSON.stringify(par || null);
 
@@ -203,6 +212,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
     const d = S.data[kalit(S.tab, S.par[S.tab])];
     $('#app').innerHTML = d && S.sohalar ? V[S.tab](d) : skelet();
     const ib = (S.data['bugun:null'] || {}).inbox || 0; const b = $('#ibadge'); b.hidden = !ib; b.textContent = ib;
+    const ag = ((S.data['agent:null'] || {}).vazifalar || []).filter((v) => v.holat === 'tasdiq').length; const ab = $('#abadge'); if (ab) { ab.hidden = !ag; ab.textContent = ag; }
     orqaTugma();
     if (S.tab === 'element') setTimeout(autoBalandlik, 0);
   }
@@ -295,6 +305,77 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
       '<textarea id="kMatn" class="inp" rows="2" placeholder="Bir-ikki qator: bugun nima bo‘ldi, nimani o‘rgandim…" style="box-shadow:none;background:var(--soft)">' + esc(kd.matn || '') + '</textarea></section>';
     return h;
   };
+
+
+  // ================= AGENT =================
+  const AG_HOLAT = { navbatda: ['Navbatda', 'var(--mut)'], ishlanmoqda: ['Ishlanmoqda', 'var(--clayD)'], tasdiq: ['Tasdiq kutmoqda', 'var(--clayD)'], tasdiqlandi: ['Joylanadi', 'var(--ok)'], joylandi: ['Joylandi', 'var(--ok)'], bajarildi: ['Bajarildi', 'var(--ok)'], rad: ['Rad etildi', 'var(--mut)'], xato: ['Xato', 'var(--clayD)'] };
+  const davom = (d) => d == null ? '' : d < 60 ? d + ' daq' : Math.floor(d / 60) + ' soat' + (d % 60 ? ' ' + d % 60 + ' daq' : '');
+  const agPill = (h) => { const x = AG_HOLAT[h] || [h, 'var(--mut)']; return '<span class="pill" style="color:' + x[1] + '">' + x[0] + '</span>'; };
+  const agQadamlar = (v) => {
+    const reja = v.reja || [], log = v.qadamlar || [];
+    const vaqti = (n) => { const x = log.slice().reverse().find((l) => l.matn === n); return x ? new Date(Date.parse(x.vaqt) + 5 * 3600e3).toISOString().slice(11, 16) : ''; };
+    return reja.map((n, i) => { const k = i < v.joriy ? 'ok' : i === v.joriy ? 'now' : 'yoq';
+      return '<div class="ag-step ' + k + '"><span class="d">' + (k === 'ok' ? '✓' : k === 'now' ? '•' : '') + '</span><span style="flex:1">' + esc(n) + (k === 'now' ? ' <span class="mut" style="font-weight:400">— hozir</span>' : '') + '</span><span class="mut" style="font-size:12px">' + vaqti(n) + '</span></div>'; }).join('');
+  };
+  V.agent = (d) => {
+    const vz = d.vazifalar || [];
+    const ish = vz.filter((v) => v.holat === 'ishlanmoqda'), tasdiq = vz.filter((v) => v.holat === 'tasdiq'), navbat = vz.filter((v) => v.holat === 'navbatda').reverse();
+    const joylash = vz.filter((v) => v.holat === 'tasdiqlandi'), tarix = vz.filter((v) => ['bajarildi', 'joylandi', 'rad', 'xato'].includes(v.holat)).slice(0, 10);
+    const k = d.keyingi || {};
+    let h = bosh('Kontent agenti', 'Agent', '<span class="row" style="gap:8px"><span class="live"><i></i>jonli</span><button class="iconbtn" data-act="agNew" aria-label="Yangi vazifa">' + ic('plus', 19) + '</button></span>');
+    // hero
+    if (ish.length) {
+      const v = ish[0], reja = v.reja || [], f = reja.length ? v.joriy / reja.length : 0, qoldi = v.taxmin ? Math.max(1, v.taxmin - (v.otdi || 0)) : null;
+      h += '<section style="background:var(--hero);color:var(--heroInk);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:12px">' +
+        '<span style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#E8A58C">⚙️ Hozir ishlayapti · #' + v.id + '</span>' +
+        '<span style="font-family:var(--serif);font-size:21px;line-height:1.25">' + esc(v.buyruq) + '</span>' +
+        '<span style="font-size:15px;font-weight:600">' + esc(reja[v.joriy] || '…') + ' <span style="opacity:.6;font-weight:400">(' + Math.min(v.joriy + 1, reja.length) + '/' + reja.length + ')</span></span>' +
+        '<div style="height:8px;border-radius:4px;background:rgba(250,249,245,.15);overflow:hidden"><i style="display:block;height:100%;width:' + Math.round(f * 100) + '%;background:#D97757;border-radius:4px;transition:width .6s"></i></div>' +
+        '<span style="font-size:13px;opacity:.75">' + Math.round(f * 100) + '% · ' + davom(v.otdi || 0) + ' o‘tdi' + (qoldi ? ' · ~' + davom(qoldi) + ' qoldi' : '') + '</span></section>';
+      h += '<section class="card" style="padding:12px 16px">' + agQadamlar(v) + '</section>';
+    } else {
+      h += '<section style="background:var(--hero);color:var(--heroInk);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:8px">' +
+        '<span style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#E8A58C">💤 Kutmoqda</span>' +
+        '<span style="font-family:var(--serif);font-size:22px;line-height:1.2">Keyingi tekshiruv: ' + (k.ertaga ? 'ertaga ' : '') + esc(k.vaqt || '') + '</span>' +
+        '<span style="font-size:13px;opacity:.75">' + davom(k.qoldi) + 'dan keyin · ' + (navbat.length ? navbat.length + ' ta vazifa navbatda' : 'navbat bo‘sh') + '</span></section>';
+    }
+    h += '<button class="btn clay" data-act="agNew" style="width:100%">' + ic('plus', 17, '#fff', 2.2) + ' Yangi vazifa</button>';
+    // tasdiq
+    if (tasdiq.length) {
+      h += '<div class="sec"><h2>Tasdig‘ingizni kutmoqda</h2><span class="pill warn">' + tasdiq.length + '</span></div>';
+      h += tasdiq.map((v) => { const n = v.natija || {}, ochiq = S.agOchiq === v.id;
+        return '<section class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px"><div class="between"><span style="font-weight:600">#' + v.id + ' · ' + esc(v.buyruq) + '</span></div>' +
+          (n.media_url && n.media_tur === 'video' ? '<video src="' + esc(n.media_url) + '" controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;max-height:420px"></video>' : '') +
+          (n.media_url && n.media_tur === 'rasm' ? '<img src="' + esc(n.media_url) + '" style="width:100%;border-radius:14px">' : '') +
+          '<div class="ag-res' + (ochiq ? ' full' : '') + '">' + esc(n.matn || '') + '</div>' +
+          '<button class="btn ghost" data-act="agToggle" data-id="' + v.id + '" style="min-height:32px">' + (ochiq ? 'Yig‘ish' : 'To‘liq o‘qish') + '</button>' +
+          '<div class="row" style="gap:8px"><button class="btn clay" data-act="agHa" data-id="' + v.id + '" style="flex:1.4">✅ Ha</button><button class="btn" data-act="agOz" data-id="' + v.id + '" style="flex:1;white-space:nowrap;padding:0 10px">✏️ Tahrir</button><button class="btn" data-act="agYoq" data-id="' + v.id + '" style="flex:.8">❌</button></div></section>'; }).join('');
+    }
+    if (joylash.length) h += '<div class="sec"><h2>Joylanishi kerak</h2></div><section class="card" style="padding:4px 16px">' + joylash.map((v) => '<div class="li"><span style="flex:1">#' + v.id + ' · ' + esc(v.buyruq) + '</span>' + agPill(v.holat) + '</div>').join('') + '</section>';
+    // navbat
+    h += '<div class="sec"><h2>Navbat</h2><span class="mut">' + (navbat.length ? '~' + davom(navbat.reduce((a, v) => a + (v.taxmin || 10), 0)) : '') + '</span></div>';
+    h += navbat.length ? '<section class="card" style="padding:4px 16px">' + navbat.map((v, i) => '<div class="li"><span class="pill">' + (i + 1) + '</span><span class="col" style="flex:1;min-width:0;gap:3px"><span>#' + v.id + ' · ' + esc(v.buyruq) + '</span><span class="mut" style="font-size:12px">~' + davom(v.taxmin) + ((v.izohlar || []).length ? ' · ✏️ izoh bilan qayta' : '') + '</span></span></div>').join('') + '</section>'
+      : '<button class="empty" data-act="agNew" style="width:100%">Navbat bo‘sh. Masalan: “Reels: tannarx hisoblashdagi 3 xato”</button>';
+    // tarix
+    if (tarix.length) h += '<div class="sec"><h2>Tarix</h2></div><section class="card" style="padding:4px 16px">' + tarix.map((v) => { const u = (v.natija || {}).havola; return '<div class="li"><span class="col" style="flex:1;min-width:0;gap:3px"><span>#' + v.id + ' · ' + esc(v.buyruq) + '</span>' + (u ? '<button class="mut" data-act="link" data-u="' + esc(u) + '" style="text-align:left;color:var(--clayD);font-size:12px">' + esc(u) + '</button>' : '') + '</span>' + agPill(v.holat) + '</div>'; }).join('') + '</section>';
+    const jd = d.jadval || [];
+    h += '<p class="mut" style="text-align:center;font-size:12px;padding:8px 0 4px">Agent har soatda tekshiradi (' + esc(jd[0] || '') + '–' + esc(jd[jd.length - 1] || '') + '). Joylashdan oldin har doim sizdan so‘raydi.</p>';
+    return h;
+  };
+  function agYangiSheet(pre) {
+    sheet('<h2 style="font-size:24px">Yangi vazifa</h2>' +
+      tanlov('agLoy', [['productcrm', 'product CRM'], ['eduflow', 'EduFlow']], 'productcrm') +
+      '<div class="chips">' + ['Reels: ', 'Karusel: ', 'Telegram post: ', '10 ta g‘oya: '].map((x) => '<button type="button" class="pill" data-act="agShablon" data-v="' + esc(x) + '" style="padding:7px 12px;font-size:13px">' + esc(x.replace(': ', '')) + '</button>').join('') + '</div>' +
+      '<textarea id="agMatn" class="inp" rows="4" placeholder="Masalan: Reels: tannarx hisoblashdagi 3 xato">' + esc(pre || '') + '</textarea>' +
+      '<button class="btn clay" data-act="agYubor" style="width:100%">Navbatga qo‘shish</button>');
+    setTimeout(() => { const t = $('#agMatn'); if (t) t.focus(); }, 250);
+  }
+  function agOzSheet(id) {
+    sheet('<h2 style="font-size:24px">#' + id + ' — nimani o‘zgartiray?</h2><textarea id="agIzoh" class="inp" rows="4" placeholder="Masalan: hook qisqaroq, oxirida demo taklifi"></textarea><button class="btn clay" data-act="agOzYubor" data-id="' + id + '" style="width:100%">Qayta ishlashga yuborish</button>');
+    setTimeout(() => { const t = $('#agIzoh'); if (t) t.focus(); }, 250);
+  }
+  // jonli yangilanish: Agent sahifasida har 5 soniyada
+  setInterval(() => { if (S.tab === 'agent' && !document.hidden && !sheetOchiq()) yukla('agent', true); }, 5000);
 
   // ================= KALENDAR =================
   V.kalendar = (d) => {
@@ -627,6 +708,14 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
     if (a === 'inSana') { haptic(); try { await api('saqla', { id: el.dataset.id, x: { sana: kunQosh(bugun(), Number(el.dataset.v)), inbox: false } }); toast('Rejaga qo‘shildi'); yangila(); } catch (e) { toast(e.message); } return; }
     if (a === 'inOchir') { if (!el.dataset.ok) { el.dataset.ok = 1; el.innerHTML = 'O‘chirilsinmi?'; return; } try { await api('ochir', { id: el.dataset.id }); yangila(); } catch (e) { toast(e.message); } return; }
     if (a === 'link') return ochHavola(el.dataset.u);
+    // agent
+    if (a === 'agNew') return agYangiSheet('');
+    if (a === 'agShablon') { const t = $('#agMatn'); if (t) { t.value = el.dataset.v + t.value.replace(/^(Reels|Karusel|Telegram post|10 ta g‘oya): /, ''); t.focus(); } return; }
+    if (a === 'agToggle') { const id = Number(el.dataset.id); S.agOchiq = S.agOchiq === id ? null : id; return render(); }
+    if (a === 'agYubor') { const t = ($('#agMatn') || {}).value || ''; const loy = tanlangan('agLoy'); if (!t.trim()) return toast('Vazifani yozing'); el.disabled = true; try { await api('agentQosh', { matn: (loy === 'eduflow' ? 'eduflow: ' : '') + t.trim() }); haptic('ok'); yop(); toast('Navbatga qo‘shildi'); yukla('agent', true); } catch (e) { el.disabled = false; toast(e.message); } return; }
+    if (a === 'agHa' || a === 'agYoq') { el.disabled = true; try { await api('agentQaror', { id: Number(el.dataset.id), amal: a === 'agHa' ? 'ha' : 'yoq' }); haptic('ok'); toast(a === 'agHa' ? 'Tasdiqlandi' : 'Rad etildi'); yukla('agent', true); } catch (e) { el.disabled = false; toast(e.message); } return; }
+    if (a === 'agOz') return agOzSheet(el.dataset.id);
+    if (a === 'agOzYubor') { const iz = ($('#agIzoh') || {}).value || ''; if (!iz.trim()) return toast('Izoh yozing'); el.disabled = true; try { await api('agentQaror', { id: Number(el.dataset.id), amal: 'oz', izoh: iz.trim() }); haptic('ok'); yop(); toast('Qayta ishlashga yuborildi'); yukla('agent', true); } catch (e) { el.disabled = false; toast(e.message); } return; }
     // tez qo'shish
     if (a === 'tTur') { T.ust.tur = el.dataset.v; haptic(); return tezKor(); }
     if (a === 'tSoha') { T.ust.soha_id = (T.ust.soha_id === el.dataset.v ? null : el.dataset.v); haptic(); return tezKor(); }

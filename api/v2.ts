@@ -7,6 +7,7 @@ import { sttBor, transkripsiya } from "../lib/stt";
 import { yubor } from "../lib/telegram";
 import { qisqa } from "../lib/ids";
 import { q } from "../lib/db";
+import { ilovaMalumoti, ilovadanQosh, qaror } from "../lib/agent";
 
 type Amal = (b: any) => Promise<unknown>;
 const ID = (b: any) => { const id = String(b.id || ""); if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Noto'g'ri ID"); return id; };
@@ -31,6 +32,13 @@ const AMALLAR: Record<string, Amal> = {
   jamgar: (b) => v2.jamgar(ID(b), Number(String(b.summa).replace(/[^\d.\-]/g, "")) || 0),
   sohaSaqla: (b) => v2.sohaSaqla(b.id ? String(b.id) : null, b.x ?? {}),
   faylOchir: (b) => v2.faylOchir(ID(b)),
+  agent: () => ilovaMalumoti(),
+  agentQosh: (b) => ilovadanQosh(String(b.matn || "")),
+  agentQaror: (b) => {
+    const amal = String(b.amal);
+    if (!["ha", "yoq", "oz"].includes(amal)) throw new Error("Noto'g'ri amal");
+    return qaror(Number(b.id), amal as any, b.izoh ? String(b.izoh) : undefined);
+  },
   async biriktir(b) {
     const id = ID(b);
     const buf = Buffer.from(String(b.fayl || ""), "base64");

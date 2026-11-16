@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!b.matn) return res.status(400).json({ xato: "matn kerak" });
         return res.status(200).json(await apiNatija(id, { matn: b.matn, media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh }));
       case "holat":
-        return res.status(200).json(await apiHolat(id, String(b.holat), b.izoh));
+        return res.status(200).json(await apiHolat(id, String(b.holat), b.izoh, b.havola, Boolean(b.jim)));
       case "yangi":
         if (!b.buyruq) return res.status(400).json({ xato: "buyruq kerak" });
         return res.status(200).json(await apiYangi(b));

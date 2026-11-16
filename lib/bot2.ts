@@ -99,7 +99,7 @@ export const MENYU = {
   keyboard: [
     [{ text: "☀️ Bugun" }, { text: "🗓 Hafta" }, { text: "📥 Inbox" }],
     [{ text: "💰 Pul" }, { text: "🔁 Odatlar" }, { text: "🔍 Qidirish" }],
-    [{ text: "📱 Ilova", web_app: { url: ILOVA_URL } }, { text: "❓ Yordam" }],
+    [{ text: "🤖 Agent" }, { text: "📱 Ilova", web_app: { url: ILOVA_URL } }, { text: "❓ Yordam" }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -107,7 +107,7 @@ export const MENYU = {
 };
 // Tugma matni → buyruq
 const TUGMA_BUYRUQ: Record<string, string> = {
-  "☀️ Bugun": "bugun", "🗓 Hafta": "hafta", "📥 Inbox": "inbox", "💰 Pul": "pul", "🔁 Odatlar": "odatlar", "🔍 Qidirish": "qidir", "❓ Yordam": "yordam", "📱 Ilova": "ilova",
+  "☀️ Bugun": "bugun", "🗓 Hafta": "hafta", "📥 Inbox": "inbox", "💰 Pul": "pul", "🔁 Odatlar": "odatlar", "🔍 Qidirish": "qidir", "❓ Yordam": "yordam", "📱 Ilova": "ilova", "🤖 Agent": "agent",
 };
 
 // ======================= Buyruqlar =======================

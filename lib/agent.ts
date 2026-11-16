@@ -5,7 +5,7 @@
 //   ❌ Yo'q → rad
 
 import { q } from "./db";
-import { tg, yubor, javob, esc, type Klaviatura } from "./telegram";
+import { tg, yubor, javob, esc, ILOVA_URL, type Klaviatura } from "./telegram";
 
 export const HOLAT_BELGI: Record<string, string> = {
   navbatda: "⏳ Navbatda",
@@ -21,7 +21,7 @@ export const HOLAT_BELGI: Record<string, string> = {
 const LOYIHALAR: Record<string, string> = { productcrm: "product CRM", eduflow: "EduFlow" };
 
 // Rejali Claude ishga tushadigan vaqtlar (Toshkent). Rejali vazifa jadvali bilan bir xil bo'lishi shart.
-export const JADVAL = ["07:37", "09:37", "11:37", "13:37", "15:37", "17:37", "22:37"];
+export const JADVAL = Array.from({ length: 17 }, (_, i) => `${String(6 + i).padStart(2, "0")}:45`); // 06:45 … 22:45
 const TASHKENT_MS = 5 * 3600 * 1000;
 const hhmm = (ms: number) => new Date(ms + TASHKENT_MS).toISOString().slice(11, 16);
 
@@ -184,6 +184,11 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
     await tg("editMessageText", { chat_id: chatId, message_id: msgId, text: p.text, parse_mode: "HTML", reply_markup: { inline_keyboard: p.kb } }).catch(() => {});
     return true;
   }
+  if (amal === "new") {
+    await javob(cq.id);
+    await kontentBuyrugi(chatId, "");
+    return true;
+  }
   if (amal === "ls") {
     const x = await navbatXabari();
     await javob(cq.id);
@@ -192,40 +197,9 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
   }
 
   const id = Number(idS);
-  const v = (await q(`select id, holat, buyruq, loyiha, tur, natija from agent_vazifalar where id = $1`, [id]))[0];
-  if (!v) {
-    await javob(cq.id, "Vazifa topilmadi", true);
-    return true;
-  }
-  if (v.holat !== "tasdiq") {
-    await javob(cq.id, `Holati: ${HOLAT_BELGI[v.holat] ?? v.holat}`, true);
-    return true;
-  }
-  const bosh = `<b>#${id}</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
-  if (amal === "ha") {
-    await javob(cq.id, "✅ Tasdiqlandi");
-    if (v.natija?.media_url) {
-      // Tayyor media — joylashga
-      await q(`update agent_vazifalar set holat = 'tasdiqlandi', updated_at = now() where id = $1`, [id]);
-      await tugmalarniAlmashtir(chatId, msgId, `${bosh}\n✅ Tasdiqlandi.` + keyingiQadamlar([
-        "🚀 Instagram va Telegram kanalga joylash (Zernio)",
-        "🔗 Joylangach havolani shu yerga yuboraman",
-      ]));
-    } else {
-      // Faqat matn (ssenariy) — keyingi bosqich: video
-      await q(`update agent_vazifalar set holat = 'bajarildi', updated_at = now() where id = $1`, [id]);
-      const yangi = await vazifaYarat(v.loyiha, "video", `Video: #${id} ssenariysi bo‘yicha Reels (1080×1920)`, id, 45);
-      await tugmalarniAlmashtir(chatId, msgId, `${bosh}\n✅ Ssenariy tasdiqlandi.` + keyingiQadamlar([
-        `🎬 Video yasash — <b>#${yangi}</b> navbatga qo‘shildi (~45 daq)`,
-        "👀 Tayyor videoni shu yerga yuboraman — siz tasdiqlaysiz",
-        "🚀 Tasdiqdan keyin Instagram va Telegram kanalga joylanadi",
-      ]));
-    }
-  } else if (amal === "yoq") {
-    await q(`update agent_vazifalar set holat = 'rad', updated_at = now() where id = $1`, [id]);
-    await javob(cq.id, "❌ Rad etildi");
-    await tugmalarniAlmashtir(chatId, msgId, `${bosh}\n❌ Rad etildi.`);
-  } else if (amal === "oz") {
+  if (amal === "oz") {
+    const v = (await q(`select holat from agent_vazifalar where id = $1`, [id]))[0];
+    if (!v || v.holat !== "tasdiq") { await javob(cq.id, v ? `Holati: ${HOLAT_BELGI[v.holat] ?? v.holat}` : "Vazifa topilmadi", true); return true; }
     await javob(cq.id);
     await tg("sendMessage", {
       chat_id: chatId,
@@ -233,9 +207,58 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
       parse_mode: "HTML",
       reply_markup: { force_reply: true, input_field_placeholder: "Masalan: hook qisqaroq, oxirida demo taklifi" },
     });
+    return true;
   }
-  await panelYangila();
+  try {
+    await qaror(id, amal as "ha" | "yoq");
+    await javob(cq.id, amal === "ha" ? "✅ Tasdiqlandi" : "❌ Rad etildi");
+  } catch (e) {
+    await javob(cq.id, String((e as Error).message), true);
+  }
+  void msgId;
   return true;
+}
+
+// Tasdiq qarori — bot tugmasi va Mini App bir xil funksiyani ishlatadi
+export async function qaror(id: number, amal: "ha" | "yoq" | "oz", izoh?: string) {
+  await jadvalTayyorla();
+  const v = (await q(`select id, holat, buyruq, loyiha, tur, natija, tg_msg from agent_vazifalar where id = $1`, [id]))[0];
+  if (!v) throw new Error("Vazifa topilmadi");
+  if (v.holat !== "tasdiq") throw new Error(`Holati: ${HOLAT_BELGI[v.holat] ?? v.holat}`);
+  const bosh = `<b>#${id}</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
+  let matn = "";
+  let yangiId: number | null = null;
+  if (amal === "ha") {
+    if (v.natija?.media_url) {
+      await q(`update agent_vazifalar set holat = 'tasdiqlandi', updated_at = now() where id = $1`, [id]);
+      matn = `${bosh}\n✅ Tasdiqlandi.` + keyingiQadamlar(["🚀 Instagram va Telegram kanalga joylash (Zernio)", "🔗 Joylangach havolani shu yerga yuboraman"]);
+    } else {
+      await q(`update agent_vazifalar set holat = 'bajarildi', updated_at = now() where id = $1`, [id]);
+      yangiId = await vazifaYarat(v.loyiha, "video", `Video: #${id} ssenariysi bo‘yicha Reels (1080×1920)`, id, 45);
+      matn = `${bosh}\n✅ Ssenariy tasdiqlandi.` + keyingiQadamlar([
+        `🎬 Video yasash — <b>#${yangiId}</b> navbatga qo‘shildi (~45 daq)`,
+        "👀 Tayyor videoni shu yerga yuboraman — siz tasdiqlaysiz",
+        "🚀 Tasdiqdan keyin Instagram va Telegram kanalga joylanadi",
+      ]);
+    }
+  } else if (amal === "yoq") {
+    await q(`update agent_vazifalar set holat = 'rad', updated_at = now() where id = $1`, [id]);
+    matn = `${bosh}\n❌ Rad etildi.`;
+  } else {
+    if (!izoh?.trim()) throw new Error("Nimani o‘zgartirish kerakligini yozing");
+    await q(
+      `update agent_vazifalar
+         set izohlar = izohlar || jsonb_build_array(jsonb_build_object('matn', $2::text, 'vaqt', now())),
+             holat = 'navbatda', updated_at = now()
+       where id = $1`,
+      [id, izoh.trim()],
+    );
+    matn = `✏️ ${bosh}\nIzoh bilan navbatga qaytdi: <i>${esc(izoh.trim())}</i>\n\n⏰ Keyingi tekshiruv: ${keyingiMatn()}`;
+  }
+  if (v.tg_msg) await tg("editMessageReplyMarkup", { chat_id: egasi(), message_id: v.tg_msg, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+  await yubor(egasi(), matn, undefined, v.tg_msg ?? undefined);
+  await panelYangila();
+  return { ok: true, yangi: yangiId };
 }
 
 // Natija xabaridagi tugmalarni olib tashlab, ostiga holat yozadi
@@ -257,22 +280,8 @@ export async function agentJavobi(m: any): Promise<boolean> {
   }
   const iz = rt.match(/^✏️ #(\d+) — nimani o'zgartiray\?/);
   if (iz) {
-    await jadvalTayyorla();
-    const id = Number(iz[1]);
-    const v = (await q(
-      `update agent_vazifalar
-         set izohlar = izohlar || jsonb_build_array(jsonb_build_object('matn', $2::text, 'vaqt', now())),
-             holat = 'navbatda', updated_at = now()
-       where id = $1 and holat in ('tasdiq','navbatda') returning id`,
-      [id, matn],
-    ))[0];
-    await yubor(
-      m.chat.id,
-      v ? `✏️ <b>#${id}</b> izoh bilan navbatga qaytdi. Claude qayta ishlaydi.` : `#${id} hozir o'zgartirib bo'lmaydi (holati o'zgargan).`,
-      undefined,
-      m.message_id,
-    );
-    await panelYangila();
+    try { await qaror(Number(iz[1]), "oz", matn); }
+    catch (e) { await yubor(m.chat.id, `#${iz[1]}: ${esc(String((e as Error).message))}`, undefined, m.message_id); }
     return true;
   }
   return false;
@@ -392,7 +401,43 @@ export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
   const jami = navbat.reduce((a, r) => a + (r.taxmin_daq ?? taxminiyVaqt(r.buyruq)), 0);
   if (navbat.length) t.push("", `🧮 Navbatdagi ish jami: ~${davomiylik(jami)}`);
   t.push("", `<i>Yangilandi ${hhmm(Date.now())}</i>`);
-  return { text: t.join("\n"), kb: [[{ text: "🔄 Yangilash", callback_data: "ag:pn" }, { text: "📋 Ro'yxat", callback_data: "ag:ls" }]] };
+  return { text: t.join("\n"), kb: [
+    [{ text: "➕ Yangi vazifa", callback_data: "ag:new" }, { text: "🔄 Yangilash", callback_data: "ag:pn" }],
+    [{ text: "📱 Ilovada ochish", web_app: { url: `${ILOVA_URL}#agent` } }],
+  ] };
+}
+
+// Mini App uchun: panel ma'lumoti (JSON)
+export async function ilovaMalumoti() {
+  await jadvalTayyorla();
+  const rows = await q(
+    `select id, loyiha, tur, buyruq, holat, natija, izohlar, reja, joriy, qadamlar, taxmin_daq, ota_id,
+            boshlangan, created_at, updated_at
+     from agent_vazifalar order by id desc limit 40`,
+  );
+  const k = keyingiTekshiruv();
+  return {
+    hozir: Date.now(),
+    keyingi: { vaqt: k.vaqt, ertaga: k.ertaga, qoldi: k.qoldi },
+    jadval: JADVAL,
+    vazifalar: rows.map((r) => ({
+      ...r,
+      otdi: r.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(r.boshlangan)) / 60000)) : null,
+      taxmin: r.taxmin_daq ?? taxminiyVaqt(r.buyruq),
+    })),
+  };
+}
+
+export async function ilovadanQosh(matn: string) {
+  if (!matn.trim()) throw new Error("Vazifa matnini yozing");
+  const v = await navbatgaQosh(matn.trim());
+  await yubor(egasi(), [
+    `🤖 <b>#${v.id} navbatga qo'shildi</b> (ilovadan) · ${LOYIHALAR[v.loyiha]}`,
+    `<i>${esc(v.buyruq)}</i>`,
+    `⏰ Keyingi tekshiruv: <b>${keyingiMatn()}</b> · ishning o'zi ~${davomiylik(taxminiyVaqt(v.buyruq))}`,
+  ].join("\n"));
+  await panelYangila();
+  return v;
 }
 
 // Qadalgan panelni tahrirlaydi; bo'lmasa yangisini yuborib qadaydi
@@ -492,11 +537,15 @@ export async function apiNatija(id: number, n: Natija) {
   return { tg_msg: msgId };
 }
 
-export async function apiHolat(id: number, holat: string, izoh?: string) {
+export async function apiHolat(id: number, holat: string, izoh?: string, havola?: string, jim?: boolean) {
   if (!HOLAT_BELGI[holat]) throw new Error("noto'g'ri holat");
-  const v = (await q(`update agent_vazifalar set holat = $2, updated_at = now() where id = $1 returning id, buyruq`, [id, holat]))[0];
+  const link = havola || (izoh?.match(/https?:\/\/\S+/) ?? [])[0] || null;
+  const v = (await q(
+    `update agent_vazifalar set holat = $2, updated_at = now(),
+       natija = case when $3::text is null then natija else coalesce(natija, '{}'::jsonb) || jsonb_build_object('havola', $3::text) end
+     where id = $1 returning id, buyruq`, [id, holat, link]))[0];
   if (!v) throw new Error("vazifa topilmadi");
-  if (izoh || holat === "joylandi" || holat === "xato") {
+  if (!jim && (izoh || holat === "joylandi" || holat === "xato")) {
     await yubor(egasi(), `${HOLAT_BELGI[holat]} · <b>#${id}</b>\n<i>${esc(String(v.buyruq).slice(0, 80))}</i>${izoh ? `\n\n${esc(izoh)}` : ""}`);
   }
   await panelYangila();
