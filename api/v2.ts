@@ -37,7 +37,7 @@ const AMALLAR: Record<string, Amal> = {
   agentKunlik: (b) => kunlikYoq(Boolean(b.yoqilgan)),
   agentQaror: (b) => {
     const amal = String(b.amal);
-    if (!["ha", "yoq", "oz"].includes(amal)) throw new Error("Noto'g'ri amal");
+    if (!["ha", "hv", "yoq", "oz"].includes(amal)) throw new Error("Noto'g'ri amal");
     return qaror(Number(b.id), amal as any, b.izoh ? String(b.izoh) : undefined);
   },
   async biriktir(b) {

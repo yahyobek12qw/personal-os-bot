@@ -38,6 +38,7 @@ export function keyingiTekshiruv(hozir = Date.now()) {
   return { vaqt: JADVAL[0], ertaga: true, qoldi: 0 };
 }
 export const davomiylik = (daq: number) => (daq < 60 ? `${daq} daq` : `${Math.floor(daq / 60)} soat${daq % 60 ? ` ${daq % 60} daq` : ""}`);
+export const keyingiMatnOchiq = () => keyingiMatn();
 const keyingiMatn = () => {
   const k = keyingiTekshiruv();
   return `${k.ertaga ? "ertaga" : "bugun"} ${k.vaqt} (${davomiylik(k.qoldi)}dan keyin)`;
@@ -76,7 +77,8 @@ export async function jadvalTayyorla() {
     add column if not exists ota_id int,
     add column if not exists reja jsonb not null default '[]'::jsonb,
     add column if not exists joriy int not null default 0,
-    add column if not exists kun date`);
+    add column if not exists kun date,
+    add column if not exists model text`);
   await q(`create table if not exists agent_sozlama (kalit text primary key, qiymat jsonb)`);
   tayyor = true;
 }
@@ -89,7 +91,7 @@ export function buyruqniAjrat(arg: string): { loyiha: string; buyruq: string } {
   return { loyiha: l.startsWith("edu") ? "eduflow" : "productcrm", buyruq: m[2].trim() };
 }
 
-export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil" };
+export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob" };
 export async function navbatgaQosh(arg: string, turMajburiy?: string) {
   await jadvalTayyorla();
   const { loyiha, buyruq } = buyruqniAjrat(arg);
@@ -266,8 +268,8 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
     return true;
   }
   try {
-    await qaror(id, amal as "ha" | "yoq");
-    await javob(cq.id, amal === "ha" ? "✅ Tasdiqlandi" : "❌ Rad etildi");
+    await qaror(id, amal as "ha" | "hv" | "yoq");
+    await javob(cq.id, amal === "yoq" ? "❌ Rad etildi" : "✅ Tasdiqlandi");
   } catch (e) {
     await javob(cq.id, String((e as Error).message), true);
   }
@@ -276,7 +278,7 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
 }
 
 // Tasdiq qarori — bot tugmasi va Mini App bir xil funksiyani ishlatadi
-export async function qaror(id: number, amal: "ha" | "yoq" | "oz", izoh?: string) {
+export async function qaror(id: number, amal: "ha" | "hv" | "yoq" | "oz", izoh?: string) {
   await jadvalTayyorla();
   const v = (await q(`select id, holat, buyruq, loyiha, tur, natija, tg_msg from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("Vazifa topilmadi");
@@ -284,10 +286,20 @@ export async function qaror(id: number, amal: "ha" | "yoq" | "oz", izoh?: string
   const bosh = `<b>#${id}</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
   let matn = "";
   let yangiId: number | null = null;
-  if (amal === "ha") {
+  const ozining = v.tur === "post" || v.tur === "izoh";
+  if (ozining && (amal === "ha" || amal === "hv" || amal === "oz")) {
+    // O'z postingiz yoki izoh javobi: "O'zgartir" — yangi matn bilan darhol tasdiq
+    const qoshimcha: Record<string, unknown> = { vaqt: amal === "hv" ? "eng_yaxshi" : "hozir" };
+    if (amal === "oz") {
+      if (!izoh?.trim()) throw new Error("Yangi matnni yozing");
+      Object.assign(qoshimcha, v.tur === "post" ? { caption: izoh.trim(), matn: izoh.trim() } : { javob: izoh.trim(), matn: izoh.trim() });
+    }
+    await q(`update agent_vazifalar set holat = 'tasdiqlandi', natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(qoshimcha)]);
+    matn = `${bosh}\n✅ ${amal === "oz" ? "Yangi matn bilan tasdiqlandi" : "Tasdiqlandi"}${v.tur === "post" ? (amal === "hv" ? " · eng yaxshi vaqtga rejalanadi" : " · hozir joylanadi") : " · javob yuboriladi"}.\n⏰ Agent: ${keyingiMatn()}`;
+  } else if (amal === "ha" || amal === "hv") {
     if (v.natija?.media_url) {
-      await q(`update agent_vazifalar set holat = 'tasdiqlandi', updated_at = now() where id = $1`, [id]);
-      matn = `${bosh}\n✅ Tasdiqlandi.` + keyingiQadamlar(["🚀 Instagram va Telegram kanalga joylash (Zernio)", "🔗 Joylangach havolani shu yerga yuboraman"]);
+      await q(`update agent_vazifalar set holat = 'tasdiqlandi', natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify({ vaqt: amal === "hv" ? "eng_yaxshi" : "hozir" })]);
+      matn = `${bosh}\n✅ Tasdiqlandi.` + keyingiQadamlar(["🚀 Instagram (Zernio) va ulangan bo‘lsa Telegram kanalga joylash", "🔗 Joylangach havolani shu yerga yuboraman"]);
     } else {
       await q(`update agent_vazifalar set holat = 'bajarildi', updated_at = now() where id = $1`, [id]);
       yangiId = await vazifaYarat(v.loyiha, "video", `Video: #${id} ssenariysi bo‘yicha Reels (1080×1920)`, id, 45);
@@ -370,7 +382,8 @@ export async function apiKontekst() {
   const hisobot = (await q(
     `select natija->>'matn' matn, to_char(updated_at at time zone 'Asia/Tashkent','YYYY-MM-DD') sana
      from agent_vazifalar where tur = 'hisobot' and natija is not null order by id desc limit 1`))[0] ?? null;
-  return { tarix, oxirgi_hisobot: hisobot, kunlik: await kunlikHolati() };
+  const kanal = (await q(`select qiymat from agent_sozlama where kalit = 'tg_kanal'`))[0]?.qiymat ?? null;
+  return { tarix, oxirgi_hisobot: hisobot, kunlik: await kunlikHolati(), tg_kanal: kanal };
 }
 
 // Tur bo'yicha standart reja (agent `ol` da o'z rejasini yuborishi ham mumkin)
@@ -398,6 +411,7 @@ function rejaQatorlari(v: any, yakun: boolean) {
   });
 }
 
+export const modelNomi = (m: string) => /haiku/i.test(m) ? "Haiku (tez)" : /sonnet/i.test(m) ? "Sonnet (o‘rta)" : /opus/i.test(m) ? "Opus (kuchli)" : m;
 // Vazifaning jonli holat xabari: reja, hozirgi qadam, foiz, vaqt
 function holatMatni(v: any, yakun?: string) {
   const reja = (v.reja ?? []) as string[];
@@ -407,7 +421,7 @@ function holatMatni(v: any, yakun?: string) {
   return [
     `${yakun ? "✅" : "⚙️"} <b>#${v.id} ${yakun ?? "ishlanmoqda"}</b> · <i>${esc(String(v.buyruq).slice(0, 70))}</i>`,
     `${chiziq(foiz)} ${Math.round(foiz * 100)}% · ${yakun ? reja.length : v.joriy}/${reja.length} qadam`,
-    `🕐 ${v.boshlangan ? hhmm(Date.parse(v.boshlangan)) : ""} da boshlandi · ${davomiylik(otdi)} o'tdi${!yakun && qoldi ? ` · ~${davomiylik(qoldi)} qoldi` : ""}`,
+    `🕐 ${v.boshlangan ? hhmm(Date.parse(v.boshlangan)) : ""} da boshlandi · ${davomiylik(otdi)} o'tdi${!yakun && qoldi ? ` · ~${davomiylik(qoldi)} qoldi` : ""}${v.model ? ` · 🧠 ${esc(modelNomi(v.model))}` : ""}`,
     "",
     ...rejaQatorlari(v, Boolean(yakun)),
     "",
@@ -416,7 +430,7 @@ function holatMatni(v: any, yakun?: string) {
 }
 
 async function holatXabariniYangila(id: number, yakun?: string) {
-  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg, model from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) return;
   const text = holatMatni(v, yakun);
   if (v.holat_msg) {
@@ -432,7 +446,7 @@ async function holatXabariniYangila(id: number, yakun?: string) {
 export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
   await jadvalTayyorla();
   const rows = await q(
-    `select id, buyruq, holat, reja, joriy, taxmin_daq, boshlangan,
+    `select id, buyruq, holat, reja, joriy, taxmin_daq, boshlangan, model,
             (updated_at at time zone 'Asia/Tashkent')::date = (now() at time zone 'Asia/Tashkent')::date bugun
      from agent_vazifalar order by id`,
   );
@@ -450,7 +464,7 @@ export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
       const reja = (r.reja ?? []) as string[];
       const otdi = r.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(r.boshlangan)) / 60000)) : 0;
       const qoldi = r.taxmin_daq ? Math.max(1, r.taxmin_daq - otdi) : null;
-      t.push(`⚙️ <b>Hozir ishlayapti:</b> ${qisqa(r)}`);
+      t.push(`⚙️ <b>Hozir ishlayapti:</b> ${qisqa(r)}${r.model ? ` · 🧠 ${esc(modelNomi(r.model))}` : ""}`);
       t.push(`   ⏳ ${esc(reja[r.joriy] ?? "...")} (${r.joriy + 1}/${reja.length})`);
       t.push(`   ${chiziq(reja.length ? r.joriy / reja.length : 0)} · ${davomiylik(otdi)} o'tdi${qoldi ? ` · ~${davomiylik(qoldi)} qoldi` : ""}`);
       const keyingi = reja.slice(r.joriy + 1);
@@ -484,7 +498,7 @@ export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
 export async function ilovaMalumoti() {
   await jadvalTayyorla();
   const rows = await q(
-    `select id, loyiha, tur, buyruq, holat, natija, izohlar, reja, joriy, qadamlar, taxmin_daq, ota_id,
+    `select id, loyiha, tur, buyruq, holat, natija, izohlar, reja, joriy, qadamlar, taxmin_daq, ota_id, model,
             boshlangan, created_at, updated_at
      from agent_vazifalar order by id desc limit 40`,
   );
@@ -536,7 +550,7 @@ export async function panelYangila(yangidan = false) {
   }
 }
 
-export async function apiOl(id: number, taxminDaq?: number, reja?: string[]) {
+export async function apiOl(id: number, taxminDaq?: number, reja?: string[], model?: string) {
   const v = (await q(`select tur, buyruq from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) return false;
   const r0 = (reja?.length ? reja : standartReja(v.tur, v.buyruq)).map((x) => String(x).slice(0, 80));
@@ -544,9 +558,9 @@ export async function apiOl(id: number, taxminDaq?: number, reja?: string[]) {
     `update agent_vazifalar
        set holat = 'ishlanmoqda', urinish = urinish + 1, updated_at = now(), boshlangan = now(),
            taxmin_daq = coalesce($2, taxmin_daq, $4), holat_msg = null, reja = $3::jsonb, joriy = 0,
-           qadamlar = '[]'::jsonb
+           qadamlar = '[]'::jsonb, model = $5
      where id = $1 and holat = 'navbatda' returning id`,
-    [id, taxminDaq ?? null, JSON.stringify(r0), taxminiyVaqt(v.buyruq)],
+    [id, taxminDaq ?? null, JSON.stringify(r0), taxminiyVaqt(v.buyruq), model ? String(model).slice(0, 40) : null],
   ))[0];
   if (!r) return false;
   await holatXabariniYangila(id);

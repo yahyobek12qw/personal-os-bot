@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { yubor, esc, tg } from "../lib/telegram";
 import { arxivChat } from "../lib/arxiv";
 import { xabarKeldi, tugmaBosildi } from "../lib/bot2";
+import { kanalUlash } from "../lib/agent2";
 import { javob } from "../lib/telegram";
 
 // Personal OS 2.0 bot: ma'lumotlar Neon bazasida (lib/bot2.ts). Eski Notion versiyasi: git tarixida.
@@ -18,6 +19,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const cq = update.callback_query;
       if (String(cq.from?.id) === egasi) await tugmaBosildi(cq);
       else await javob(cq.id);
+    } else if (update.channel_post) {
+      if (/^\/ulash_kanal(@\w+)?\s*$/i.test(String(update.channel_post.text ?? ""))) await kanalUlash(update.channel_post);
     } else if (update.message) {
       const m = update.message;
       if (m.chat?.type === "private") {

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
+import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { jadvalTayyorla, apiKontekst, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
 // Rejali Claude shu API orqali navbatni o'qiydi va natija yuboradi.
@@ -16,13 +17,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ruxsat(req)) return res.status(401).json({ xato: "unauthorized" });
   try {
     await jadvalTayyorla();
+    if (req.method === "GET" && req.query.fayl) {
+      const f = await faylBolak(Number(req.query.fayl), Number(req.query.bo ?? 0), Number(req.query.gacha ?? 3_999_999));
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("X-Jami", String(f.jami)); res.setHeader("X-Bo", String(f.bo)); res.setHeader("X-Oxir", String(f.oxir)); res.setHeader("X-Nom", f.nom ?? "fayl");
+      return res.status(200).send(f.data);
+    }
     if (req.method === "GET") { const vazifalar = await apiNavbat(); return res.status(200).json({ vazifalar, ...(vazifalar.length ? await apiKontekst() : {}) }); }
     if (req.method !== "POST") return res.status(405).json({ xato: "method" });
     const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body ?? {};
     const id = Number(b.id);
     switch (b.amal) {
       case "ol":
-        return res.status(200).json({ olindi: await apiOl(id, b.taxmin_daq ? Number(b.taxmin_daq) : undefined, Array.isArray(b.reja) ? b.reja : undefined) });
+        return res.status(200).json({ olindi: await apiOl(id, b.taxmin_daq ? Number(b.taxmin_daq) : undefined, Array.isArray(b.reja) ? b.reja : undefined, b.model ? String(b.model) : undefined) });
       case "jarayon":
         return res.status(200).json(await apiJarayon(id, String(b.bosqich ?? ""), b.taxmin_daq ? Number(b.taxmin_daq) : undefined));
       case "natija":
@@ -33,10 +40,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "yangi":
         if (!b.buyruq) return res.status(400).json({ xato: "buyruq kerak" });
         return res.status(200).json(await apiYangi(b));
+      case "kanal":
+        return res.status(200).json(await kanalgaJoyla(id, b.matn ? String(b.matn) : undefined));
+      case "taklif":
+        return res.status(200).json(await apiTaklif(b));
       case "xabar":
         return res.status(200).json(await apiXabar(String(b.matn ?? "")));
       default:
-        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | yangi | xabar" });
+        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | yangi | kanal | taklif | xabar" });
     }
   } catch (e) {
     console.error(e);
