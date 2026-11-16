@@ -49,12 +49,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === "GET" && req.query.rasm) return res.status(200).json(await rasmTekshir());
     if (req.method === "GET" && req.query.buyruqlar) {
       // Bot menyusi: mavjud buyruqlarni o'qiydi; "yangila" bo'lsa agent buyruqlarini qo'shadi
-      const bor: { command: string; description: string }[] = await tg("getMyCommands", {});
+      // Buyruqlar faqat egasining chatida ko'rinadi (scope: chat)
+      const scope = { type: "chat", chat_id: Number(process.env.ALLOWED_CHAT_ID) };
+      let bor: { command: string; description: string }[] = await tg("getMyCommands", { scope });
+      if (!bor.length) bor = await tg("getMyCommands", {});
       if (req.query.buyruqlar !== "yangila") return res.status(200).json({ buyruqlar: bor });
       const nomlar = new Set(bor.map((b) => b.command));
       const yangi = [...bor.map((b) => AGENT_BUYRUQLAR.find((a) => a.command === b.command) ?? b), ...AGENT_BUYRUQLAR.filter((a) => !nomlar.has(a.command))];
-      await tg("setMyCommands", { commands: yangi.slice(0, 100) });
+      await tg("setMyCommands", { commands: yangi.slice(0, 100), scope });
       return res.status(200).json({ buyruqlar: yangi });
+    }
+    if (req.method === "GET" && req.query.maxfiy) {
+      // Bot faqat egasi uchun: buyruqlar menyusi va Mini App tugmasini boshqalardan yashiradi
+      const egasiId = Number(process.env.ALLOWED_CHAT_ID);
+      const scope = { type: "chat", chat_id: egasiId };
+      const umumiy: any[] = await tg("getMyCommands", {});
+      const egasinki: any[] = await tg("getMyCommands", { scope });
+      if (umumiy.length) {
+        if (!egasinki.length) await tg("setMyCommands", { commands: umumiy, scope });
+        await tg("deleteMyCommands", {});
+      }
+      const tugma = await tg("getChatMenuButton", {});
+      if (tugma?.type === "web_app") {
+        // egasining chatiga aniq o'rnatiladi (aks holda umumiy sozlamani meros qilib oladi)
+        await tg("setChatMenuButton", { chat_id: egasiId, menu_button: tugma });
+        await tg("setChatMenuButton", { menu_button: { type: "commands" } });
+      }
+      return res.status(200).json({
+        umumiy_buyruqlar: (await tg("getMyCommands", {})).length,
+        egasi_buyruqlar: (await tg("getMyCommands", { scope })).length,
+        umumiy_tugma: (await tg("getChatMenuButton", {}))?.type,
+        egasi_tugma: (await tg("getChatMenuButton", { chat_id: egasiId }))?.type,
+      });
     }
     if (req.method === "GET" && req.query.webhook) {
       // Diagnostika: webhook kanal postlarini (channel_post) qabul qiladimi; kerak bo'lsa tuzatadi

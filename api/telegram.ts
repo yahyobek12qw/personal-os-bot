@@ -3,10 +3,12 @@ import { yubor, esc, tg } from "../lib/telegram";
 import { arxivChat } from "../lib/arxiv";
 import { xabarKeldi, tugmaBosildi } from "../lib/bot2";
 import { kanalUlash } from "../lib/agent2";
-import { guruhXabari } from "../lib/guruh";
+import { guruhXabari, guruh } from "../lib/guruh";
 import { javob } from "../lib/telegram";
 
 // Personal OS 2.0 bot: ma'lumotlar Neon bazasida (lib/bot2.ts). Eski Notion versiyasi: git tarixida.
+// Bot faqat egasi uchun: boshqalarning shaxsiy xabarlari va tugmalariga javob yo'q, begona guruhlardan chiqib ketadi,
+// xatolik xabari ham faqat egasiga boradi. Yagona istisno — product CRM muhokama guruhidagi FAQ (lib/guruh.ts).
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(200).send("ok");
   if (req.headers["x-telegram-bot-api-secret-token"] !== process.env.TELEGRAM_SECRET) {
@@ -26,6 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const m = update.message;
       if (m.chat?.type === "private") {
         if (String(m.chat.id) === egasi) await xabarKeldi(m);
+      } else if (await begonaGuruhgaQoshildi(m, egasi)) {
+        // begona odam botni o'z guruhiga qo'shdi — bot chiqib ketdi
       } else if (String(m.from?.id) === egasi && /^\/ulash(@\w+)?(\s|$)/i.test(m.text ?? "")) {
         await guruhniUlash(m);
       } else {
@@ -34,10 +38,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch (e) {
     console.error(e);
-    const chatId = update.message?.chat?.id ?? update.callback_query?.message?.chat?.id;
-    if (chatId) await yubor(chatId, `⚠️ Xatolik: ${esc(String((e as Error).message).slice(0, 200))}\nXabarni qayta yuboring.`).catch(() => {});
+    // Xatolik haqida faqat egasiga yoziladi — boshqa chat yoki guruhga hech narsa ketmaydi
+    await yubor(egasi, `⚠️ Xatolik: ${esc(String((e as Error).message).slice(0, 200))}\nXabarni qayta yuboring.`).catch(() => {});
   }
   return res.status(200).send("ok");
+}
+
+// Botni guruhga egasidan boshqa odam qo'shsa — jimgina chiqib ketadi (ulangan guruhlar bundan mustasno)
+async function begonaGuruhgaQoshildi(m: any, egasi: string): Promise<boolean> {
+  const botId = String(process.env.TELEGRAM_BOT_TOKEN).split(":")[0];
+  const qoshildi = (m.new_chat_members ?? []).some((u: any) => String(u.id) === botId);
+  if (!qoshildi || String(m.from?.id) === egasi) return false;
+  const g = await guruh().catch(() => null);
+  if (String(m.chat.id) === String(g?.id) || String(m.chat.id) === arxivChat()) return false;
+  await tg("leaveChat", { chat_id: m.chat.id }).catch(() => {});
+  const kim = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(" ") + (m.from?.username ? ` @${m.from.username}` : "");
+  await yubor(egasi, `🚪 <b>${esc(kim || "Kimdir")}</b> botni «${esc(m.chat.title ?? "guruh")}» guruhiga qo'shdi — bot chiqib ketdi.`).catch(() => {});
+  return true;
 }
 
 // ======================= Fayllar guruhini ulash =======================

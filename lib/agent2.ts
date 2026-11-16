@@ -18,6 +18,9 @@ export async function kanal(): Promise<{ id: number; nom: string; username?: str
 export async function kanalUlash(cp: any) {
   await jadvalTayyorla();
   const ch = cp.chat;
+  // Faqat egasi admin bo'lgan kanal ulanadi — begona kanal botni o'ziga "ulab" ololmaydi
+  const e = await tg("getChatMember", { chat_id: ch.id, user_id: Number(egasi()) }).catch(() => null);
+  if (!["creator", "administrator"].includes(e?.status)) return;
   const botId = Number(String(process.env.TELEGRAM_BOT_TOKEN).split(":")[0]);
   const a = await tg("getChatMember", { chat_id: ch.id, user_id: botId }).catch(() => null);
   const mumkin = a?.status === "administrator" && a?.can_post_messages !== false;
