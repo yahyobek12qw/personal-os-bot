@@ -7,7 +7,7 @@ import { sttBor, transkripsiya } from "../lib/stt";
 import { yubor } from "../lib/telegram";
 import { qisqa } from "../lib/ids";
 import { q } from "../lib/db";
-import { ilovaMalumoti, ilovadanQosh, qaror, kunlikYoq, faollik, navbatgaQosh, panelYangila } from "../lib/agent";
+import { ilovaMalumoti, ilovadanQosh, qaror, kunlikYoq, faollik, navbatgaQosh, panelYangila, postKunlariniYoz } from "../lib/agent";
 import { akkaunt, postOchir, zernioBor } from "../lib/zernio";
 import { kanal } from "../lib/agent2";
 
@@ -37,6 +37,7 @@ const AMALLAR: Record<string, Amal> = {
   agent: () => ilovaMalumoti(),
   agentQosh: (b) => ilovadanQosh(String(b.matn || "")),
   agentKunlik: (b) => kunlikYoq(Boolean(b.yoqilgan)),
+  agentPostKunlari: (b) => postKunlariniYoz(Array.isArray(b.kunlar) ? b.kunlar : []),
   agentAkkaunt: (b) => akkaunt(Boolean(b.yangila)),
   agentRejaBekor: (b) => postOchir(String(b.postId || "")),
   async agentHolat() { return { ...(await faollik()), zernio: zernioBor(), kanal: await kanal() }; },

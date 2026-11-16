@@ -91,10 +91,10 @@ export async function mediaYukla(buf: Buffer, nom: string, mime: string): Promis
 }
 
 // ---------- Post yaratish ----------
-export async function postYarat(o: { matn: string; mediaUrl: string; mediaTur: "video" | "image"; vaqt: Date | null }) {
+export async function postYarat(o: { matn: string; mediaUrl: string; mediaUrls?: string[]; mediaTur: "video" | "image"; vaqt: Date | null }) {
   const body: any = {
     content: o.matn,
-    mediaItems: [{ type: o.mediaTur, url: o.mediaUrl }],
+    mediaItems: (o.mediaUrls?.length ? o.mediaUrls : [o.mediaUrl]).map((url) => ({ type: o.mediaTur, url })),
     platforms: [{ platform: "instagram", accountId: IG_HISOB }],
   };
   if (o.vaqt) { body.scheduledFor = o.vaqt.toISOString(); body.timezone = "UTC"; }

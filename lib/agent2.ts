@@ -46,12 +46,20 @@ export async function kanalgaJoyla(id: number, matnUstidan?: string) {
   const v = (await q(`select natija from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
   const n = v.natija ?? {};
-  const caption = String(matnUstidan ?? n.caption ?? n.matn ?? "").slice(0, 1000);
+  // Telegram uchun alohida matn bo'lsa — o'sha (heshtegsiz, havola bilan), bo'lmasa Instagram caption
+  const toliq = String(n.tg_matn ?? matnUstidan ?? n.caption ?? n.matn ?? "").slice(0, 4000);
+  const sigadi = toliq.length <= 1000;
+  const caption = sigadi ? toliq : undefined;
   const manba = n.tg_file_id || n.media_url;
+  const rasmlar: string[] = Array.isArray(n.media_urls) ? n.media_urls.slice(0, 10) : [];
   let m: any;
-  if (manba && n.media_tur === "video") m = await tg("sendVideo", { chat_id: k.id, video: manba, caption, supports_streaming: true });
-  else if (manba && n.media_tur === "rasm") m = await tg("sendPhoto", { chat_id: k.id, photo: manba, caption });
-  else m = await tg("sendMessage", { chat_id: k.id, text: String(matnUstidan ?? n.caption ?? n.matn ?? "").slice(0, 4000) });
+  if (rasmlar.length > 1) {
+    const g = await tg("sendMediaGroup", { chat_id: k.id, media: rasmlar.map((u, i) => ({ type: "photo", media: u, ...(i === 0 && caption ? { caption } : {}) })) });
+    m = g[0];
+  } else if (manba && n.media_tur === "video") m = await tg("sendVideo", { chat_id: k.id, video: manba, caption, supports_streaming: true });
+  else if ((manba || rasmlar[0]) && n.media_tur === "rasm") m = await tg("sendPhoto", { chat_id: k.id, photo: manba || rasmlar[0], caption });
+  else m = await tg("sendMessage", { chat_id: k.id, text: toliq });
+  if (!sigadi && (rasmlar.length || manba) && toliq) await tg("sendMessage", { chat_id: k.id, text: toliq, reply_to_message_id: m.message_id }).catch(() => null);
   const havola = k.username ? `https://t.me/${k.username}/${m.message_id}` : null;
   await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || jsonb_build_object('tg_havola', $2::text) where id = $1`, [id, havola ?? `kanal:${m.message_id}`]);
   return { ok: true, havola };
@@ -148,7 +156,7 @@ export function captionAjrat(n: any): string {
 }
 
 const toliqUrl = (n: any) => n?.toliq_url || (String(n?.izoh ?? "").match(/https?:\/\/\S+\.(mp4|mov|jpg|jpeg|png)\S*/i) ?? [])[0] || n?.media_url || null;
-export const mediaBor = (n: any) => Boolean(n?.tg_file_id || toliqUrl(n));
+export const mediaBor = (n: any) => Boolean(n?.tg_file_id || n?.media_urls?.length || toliqUrl(n));
 
 // vaqt: "hozir" | "eng_yaxshi" | "YYYY-MM-DDTHH:mm" (Toshkent)
 export async function serverdaJoyla(id: number, vaqt: string) {
@@ -164,6 +172,8 @@ export async function serverdaJoyla(id: number, vaqt: string) {
     const buf = Buffer.from(await r.arrayBuffer());
     url = await mediaYukla(buf, String(f.file_path).split("/").pop() || "media", tur === "video" ? "video/mp4" : "image/jpeg");
   }
+  const rasmlar: string[] = Array.isArray(n.media_urls) ? n.media_urls.slice(0, 10) : [];
+  if (!url && rasmlar.length) url = rasmlar[0];
   if (!url) throw new Error("Joylash uchun media topilmadi");
   let sana: Date | null = null;
   if (vaqt === "eng_yaxshi") sana = await engYaxshiVaqt();
@@ -172,7 +182,7 @@ export async function serverdaJoyla(id: number, vaqt: string) {
     if (sana.getTime() < Date.now() + 5 * 60_000) throw new Error("Vaqt kamida 5 daqiqa keyin bo'lsin");
   }
   const caption = captionAjrat(n);
-  const p = await zPost({ matn: caption, mediaUrl: url, mediaTur: tur, vaqt: sana });
+  const p = await zPost({ matn: caption, mediaUrl: url, mediaUrls: rasmlar.length > 1 ? rasmlar : undefined, mediaTur: rasmlar.length ? "image" : tur, vaqt: sana });
   const k = await kanal();
   const qoshimcha: Record<string, unknown> = { zernio_post_id: p.id, zernio_media: url, joylash_vaqt: sana ? sana.toISOString() : new Date().toISOString(), caption };
   if (k) qoshimcha.kanal_kutilmoqda = true;
@@ -180,7 +190,7 @@ export async function serverdaJoyla(id: number, vaqt: string) {
   await q(`update agent_vazifalar set holat = $2, natija = coalesce(natija,'{}'::jsonb) || $3::jsonb, updated_at = now() where id = $1`,
     [id, sana ? "rejalandi" : "joylandi", JSON.stringify(qoshimcha)]);
   let kanalHavola: string | null = null;
-  if (k && !sana) { kanalHavola = (await kanalgaJoyla(id, caption).catch(() => ({ havola: null }))).havola; await q(`update agent_vazifalar set natija = natija - 'kanal_kutilmoqda' where id = $1`, [id]); }
+  if (k && !sana) { kanalHavola = (await kanalgaJoyla(id).catch(() => ({ havola: null }))).havola; await q(`update agent_vazifalar set natija = natija - 'kanal_kutilmoqda' where id = $1`, [id]); }
   const vaqtMatn = sana ? new Date(sana.getTime() + 5 * 3600e3).toISOString().replace("T", " ").slice(0, 16) : null;
   await yubor(egasi(), [
     sana ? `🗓 <b>#${id} rejalandi</b> — ${vaqtMatn} (Toshkent)` : `🚀 <b>#${id} Instagram'ga joylanmoqda</b>`,
@@ -202,7 +212,7 @@ export async function rejalanganlarniYakunla() {
   for (const r of rows) {
     const havola = r.natija.havola ?? await postHavolasi(r.natija.zernio_post_id);
     if (r.natija.kanal_kutilmoqda) {
-      await kanalgaJoyla(r.id, r.natija.caption).catch(() => null);
+      await kanalgaJoyla(r.id).catch(() => null);
       await q(`update agent_vazifalar set natija = natija - 'kanal_kutilmoqda' where id = $1`, [r.id]);
     }
     if (havola) await q(`update agent_vazifalar set holat = 'joylandi', natija = natija || jsonb_build_object('havola', $2::text), updated_at = now() where id = $1`, [r.id, havola]);

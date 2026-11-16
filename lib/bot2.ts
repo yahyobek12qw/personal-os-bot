@@ -8,7 +8,7 @@ import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, type Klav
 import { arxivga, arxivChat, arxivdanYubor, type Bolim, type ArxivFayl } from "./arxiv";
 import { qisqa, toliq } from "./ids";
 import { sttBor, transkripsiya } from "./stt";
-import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila, tahlilBuyrugi, kunlikBuyrugi } from "./agent";
+import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila, tahlilBuyrugi, kunlikBuyrugi, rasmpostBuyrugi } from "./agent";
 import { postYarat, kanalBuyrugi } from "./agent2";
 
 const MAKS_YUKLAB_OLISH = 20 * 1024 * 1024;
@@ -132,6 +132,7 @@ export const YORDAM = [
   "",
   "🤖 <b>Kontent agenti</b>: <code>/kontent Reels: mavzu</code> (EduFlow uchun <code>/kontent eduflow: ...</code>) · panel: /agent",
   "🔎 <code>/tahlil savol</code> — research va tahlil · 📅 /kunlik — har kuni hisobot + 1 video",
+  "🖼 <code>/rasmpost mavzu</code> — agent karusel/rasm post tayyorlaydi (Instagram + Telegram)",
   "📤 /post — o'z rasm/videongizni joylash · 📢 /kanal — Telegram kanalni ulash",
 ].join("\n");
 
@@ -319,6 +320,7 @@ export async function xabarKeldi(m: any) {
     if (cmd === "start" || cmd === "yordam" || cmd === "help") return tg("sendMessage", { chat_id: chatId, text: YORDAM, parse_mode: "HTML", reply_markup: MENYU });
     if (cmd === "kontent" || cmd === "k") return kontentBuyrugi(chatId, arg, m.message_id);
     if (cmd === "tahlil" || cmd === "research") return tahlilBuyrugi(chatId, arg, m.message_id);
+    if (cmd === "rasmpost" || cmd === "karusel") return rasmpostBuyrugi(chatId, arg, m.message_id);
     if (cmd === "kunlik") return kunlikBuyrugi(chatId);
     if (cmd === "kanal") return kanalBuyrugi(chatId);
     if (cmd === "post") return yubor(chatId, "📤 <b>Post joylash</b>\nRasm yoki videoni yuboring va izohiga (caption) <code>/post</code> dan keyin matnni yozing:\n<code>/post Tikuvxonangiz uchun yangi imkoniyat…</code>\nMen ko'rsataman, siz ✅ bosasiz — agent Instagram'ga (va ulangan bo'lsa kanalga) joylaydi.");

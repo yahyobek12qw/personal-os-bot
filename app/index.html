@@ -310,7 +310,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
   // ================= AGENT =================
   // 4 ta yorliq: Ish · Akkaunt · Research · Holat
   const AG_HOLAT = { navbatda: ['Navbatda', 'var(--mut)'], ishlanmoqda: ['Ishlanmoqda', 'var(--clayD)'], tasdiq: ['Tasdiq kutmoqda', 'var(--clayD)'], tasdiqlandi: ['Joylanadi', 'var(--ok)'], rejalandi: ['Rejalandi', 'var(--ok)'], joylandi: ['Joylandi', 'var(--ok)'], bajarildi: ['Bajarildi', 'var(--ok)'], rad: ['Rad etildi', 'var(--mut)'], xato: ['Xato', 'var(--clayD)'] };
-  const AG_TUR = { kontent: '✍️', video: '🎬', kunlik: '🎬', hisobot: '📊', tahlil: '🔎', post: '📤', izoh: '💬' };
+  const AG_TUR = { kontent: '✍️', video: '🎬', kunlik: '🎬', hisobot: '📊', tahlil: '🔎', post: '📤', izoh: '💬', rasmpost: '🖼' };
   const davom = (d) => d == null ? '' : d < 60 ? d + ' daq' : Math.floor(d / 60) + ' soat' + (d % 60 ? ' ' + d % 60 + ' daq' : '');
   const sonQ = (n) => n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n));
   const tVaqt = (iso) => { if (!iso) return ''; const d = new Date(Date.parse(iso) + 5 * 3600e3); const s = d.toISOString(); return sanaQ(s.slice(0, 10)) + ' ' + s.slice(11, 16); };
@@ -351,18 +351,21 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
         '<span style="font-family:var(--serif);font-size:22px;line-height:1.2">Keyingi tekshiruv: ' + (k.ertaga ? 'ertaga ' : '') + esc(k.vaqt || '') + '</span>' +
         '<span style="font-size:13px;opacity:.75">' + davom(k.qoldi) + 'dan keyin · ' + (navbat.length ? navbat.length + ' ta vazifa navbatda' : 'navbat bo‘sh') + '</span></section>';
     }
-    h += '<div class="row" style="gap:8px"><button class="btn clay" data-act="agNew" style="flex:1">' + ic('plus', 17, '#fff', 2.2) + ' Yangi vazifa</button><button class="btn" data-act="agNew" data-pre="Reels: " style="flex:none;padding:0 14px">🎬 Video</button></div>';
+    h += '<div class="row" style="gap:8px"><button class="btn clay" data-act="agNew" style="flex:1">' + ic('plus', 17, '#fff', 2.2) + ' Yangi vazifa</button><button class="btn" data-act="agNew" data-pre="Reels: " style="flex:none;padding:0 12px">🎬 Video</button><button class="btn" data-act="agNew" data-pre="Post: " style="flex:none;padding:0 12px">🖼 Post</button></div>';
     if (tasdiq.length) {
       h += '<div class="sec"><h2>Tasdig‘ingizni kutmoqda</h2><span class="pill warn">' + tasdiq.length + '</span></div>';
       h += tasdiq.map((v) => {
-        const n = v.natija || {}, ochiq = S.agOchiq === v.id, media = n.media_url || n.tg_file_id;
+        const n = v.natija || {}, ochiq = S.agOchiq === v.id, media = n.media_url || n.tg_file_id || (n.media_urls || []).length;
         let btn;
         if (media && v.tur !== 'izoh') btn = '<div class="col" style="gap:8px"><div class="row" style="gap:8px"><button class="btn clay" data-act="agJoyla" data-id="' + v.id + '" data-v="ha" style="flex:1;white-space:nowrap;font-size:14px;padding:0 8px">🚀 Hozir</button><button class="btn" data-act="agJoyla" data-id="' + v.id + '" data-v="hv" style="flex:1;white-space:nowrap;font-size:14px;padding:0 8px">🕐 Eng yaxshi vaqt</button></div>' +
           '<div class="row" style="gap:8px"><button class="btn" data-act="agVaqt" data-id="' + v.id + '" style="flex:1;white-space:nowrap;font-size:14px;padding:0 8px">⏰ Vaqt tanlash</button><button class="btn" data-act="agOz" data-id="' + v.id + '" style="flex:1;white-space:nowrap">✏️ Tahrir</button><button class="btn" data-act="agYoq" data-id="' + v.id + '" style="flex:none;padding:0 14px">❌</button></div></div>';
         else btn = '<div class="row" style="gap:8px"><button class="btn clay" data-act="agHa" data-id="' + v.id + '" style="flex:1.4">' + (v.tur === 'izoh' ? '✅ Yuborish' : '✅ Ha') + '</button><button class="btn" data-act="agOz" data-id="' + v.id + '" style="flex:1;white-space:nowrap;padding:0 10px">✏️ Tahrir</button><button class="btn" data-act="agYoq" data-id="' + v.id + '" style="flex:.8">❌</button></div>';
         return '<section class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px"><span style="font-weight:600">' + (AG_TUR[v.tur] || '') + ' #' + v.id + ' · ' + esc(v.buyruq) + '</span>' +
           (n.media_url && n.media_tur === 'video' ? '<video src="' + esc(n.media_url) + '" controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;max-height:420px"></video>' : '') +
-          (n.media_url && n.media_tur === 'rasm' ? '<img src="' + esc(n.media_url) + '" style="width:100%;border-radius:14px">' : '') +
+          ((n.media_urls || []).length > 1 ? '<div style="display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory">' + n.media_urls.map((u) => '<img src="' + esc(u) + '" style="width:78%;flex:none;border-radius:14px;scroll-snap-align:start">').join('') + '</div><span class="mut" style="font-size:12px">Karusel · ' + n.media_urls.length + ' ta rasm — suring →</span>'
+            : n.media_url && n.media_tur === 'rasm' ? '<img src="' + esc(n.media_url) + '" style="width:100%;border-radius:14px">' : '') +
+          (n.caption ? '<div style="font-size:13px"><b>📸 Instagram</b><div class="mut" style="white-space:pre-wrap;margin-top:4px">' + esc(n.caption) + '</div></div>' : '') +
+          (n.tg_matn ? '<div style="font-size:13px"><b>📢 Telegram</b><div class="mut" style="white-space:pre-wrap;margin-top:4px">' + esc(n.tg_matn) + '</div></div>' : '') +
           (v.tur === 'izoh' ? '<div class="mut" style="font-size:13px">«' + esc(n.izoh_matni || '') + '»' + (n.muallif ? ' — @' + esc(n.muallif) : '') + '</div>' : '') +
           '<div class="ag-res' + (ochiq ? ' full' : '') + '">' + esc(n.matn || n.caption || '') + '</div>' +
           '<button class="btn ghost" data-act="agToggle" data-id="' + v.id + '" style="min-height:32px">' + (ochiq ? 'Yig‘ish' : 'To‘liq o‘qish') + '</button>' + btn + '</section>';
@@ -444,6 +447,9 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
     h += '<p class="mut" style="font-size:12px;line-height:1.45">Claude obunasining aniq limitini (foizda) tashqi dasturlar o‘qiy olmaydi — u faqat Claude → Settings → Usage’da ko‘rinadi. Bu yerda agentning o‘z sarfi va ogohlantirishlar: ish 1.5 soat olinmasa yoki dispetcher jim qolsa, botga xabar keladi.</p>';
     h += '<div class="sec"><h2>Sozlamalar</h2></div>';
     h += '<section class="card" style="padding:14px 16px;display:flex;align-items:center;gap:12px"><span class="col" style="flex:1;gap:3px"><span style="font-weight:600">📅 Kunlik rejim</span><span class="mut" style="font-size:13px">06:45: akkaunt hisoboti + 1 ta video</span></span><button class="pill' + (d.kunlik ? ' warn' : '') + '" data-act="agKunlik" data-v="' + (d.kunlik ? 0 : 1) + '" style="padding:8px 14px;font-size:13px;font-weight:600">' + (d.kunlik ? 'Yoqilgan' : 'O‘chiq') + '</button></section>';
+    const PK = d.post_kunlari || [];
+    h += '<section class="card" style="padding:14px 16px;display:flex;flex-direction:column;gap:10px"><span class="col" style="gap:3px"><span style="font-weight:600">🖼 Rasmli post kunlari</span><span class="mut" style="font-size:13px">Shu kunlari agent karusel/rasm post tayyorlaydi (video limitiga kirmaydi)</span></span><div class="row" style="gap:6px;flex-wrap:wrap">' +
+      ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'].map((x, i) => '<button class="pill' + (PK.includes(i + 1) ? ' warn' : '') + '" data-act="agPostKun" data-k="' + (i + 1) + '" style="padding:8px 12px;font-size:13px;font-weight:600">' + x + '</button>').join('') + '</div></section>';
     h += '<section class="card" style="padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">📢 Telegram kanal</span><span class="mut" style="font-size:13px">' + (x.kanal ? esc(x.kanal.nom) + (x.kanal.username ? ' · @' + esc(x.kanal.username) : '') + ' — ulangan' : 'Ulanmagan. Botni kanalga admin qiling va kanalga /ulash_kanal yozing.') + '</span></section>';
     h += '<section class="card" style="padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">📈 Zernio (statistika va rejalash)</span><span class="mut" style="font-size:13px">' + (x.zernio ? 'Ulangan — joylash va rejalash darhol bajariladi.' : 'Kalit yo‘q — joylashni agent keyingi tekshiruvda qiladi, vaqt tanlash ishlamaydi.') + '</span></section>';
     h += '<button class="btn" data-act="agHolYangi" style="width:100%">🔄 Yangilash</button>';
@@ -819,6 +825,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
     if (a === 'agNew') return agYangiSheet(el.dataset.pre || '');
     if (a === 'agAkkYangi') { S.agAkk = null; S.agAkkYuk = 1; render(); try { S.agAkk = await api('agentAkkaunt', { yangila: true }); } catch (e) { S.agAkk = { xato: e.message }; } S.agAkkYuk = 0; return render(); }
     if (a === 'agHolYangi') { S.agHol = null; return render(); }
+    if (a === 'agPostKun') { const k = +el.dataset.k, pk = ((S.data[kalit('agent', S.par.agent)] || {}).post_kunlari) || []; const yangi = pk.includes(k) ? pk.filter((x) => x !== k) : [...pk, k]; el.disabled = true; try { await api('agentPostKunlari', { kunlar: yangi }); haptic('ok'); yukla('agent', true); } catch (e) { el.disabled = false; toast(e.message); } return; }
     if (a === 'agKunlik') { const v = el.dataset.v === '1'; el.disabled = true; try { await api('agentKunlik', { yoqilgan: v }); haptic('ok'); toast(v ? 'Kunlik rejim yoqildi' : 'Kunlik rejim o‘chirildi'); yukla('agent', true); } catch (e) { el.disabled = false; toast(e.message); } return; }
     if (a === 'agShablon') { const t = $('#agMatn'); if (t) { t.value = el.dataset.v + t.value.replace(/^(Reels|Karusel|Telegram post|10 ta g‘oya|Tahlil): /, ''); t.focus(); } return; }
     if (a === 'agToggle') { const id = Number(el.dataset.id); S.agOchiq = S.agOchiq === id ? null : id; return render(); }

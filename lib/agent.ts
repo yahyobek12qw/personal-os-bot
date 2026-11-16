@@ -94,13 +94,13 @@ export function buyruqniAjrat(arg: string): { loyiha: string; buyruq: string } {
   return { loyiha: l.startsWith("edu") ? "eduflow" : "productcrm", buyruq: m[2].trim() };
 }
 
-export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob" };
+export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", rasmpost: "Rasmli post", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob" };
 export async function navbatgaQosh(arg: string, turMajburiy?: string) {
   await jadvalTayyorla();
   const { loyiha, buyruq } = buyruqniAjrat(arg);
-  const tur = turMajburiy ?? (/^(tahlil|research|analiz)\s*:/i.test(buyruq) ? "tahlil" : "kontent");
+  const tur = turMajburiy ?? (/^(tahlil|research|analiz)\s*:/i.test(buyruq) ? "tahlil" : /^(rasmli\s*)?post\s*:/i.test(buyruq) ? "rasmpost" : "kontent");
   const r = (await q(`insert into agent_vazifalar (loyiha, tur, buyruq, taxmin_daq) values ($1, $2, $3, $4) returning id`,
-    [loyiha, tur, buyruq, tur === "tahlil" ? 15 : taxminiyVaqt(buyruq)]))[0];
+    [loyiha, tur, buyruq, tur === "tahlil" ? 15 : tur === "rasmpost" ? 20 : taxminiyVaqt(buyruq)]))[0];
   return { id: r.id as number, loyiha, buyruq, tur };
 }
 
@@ -127,6 +127,17 @@ async function videoKuni(): Promise<string> {
   return d.toISOString().slice(0, 10);
 }
 export const sanaMatni = (k: string) => { const [, m, d] = k.split("-"); return `${+d}.${m}`; };
+// Rasmli post kunlari (Toshkent, 1=Du ... 7=Ya). Standart: Se, Pa, Sh
+export async function postKunlari(): Promise<number[]> {
+  const s = (await q(`select qiymat from agent_sozlama where kalit = 'post_kunlari'`))[0];
+  return Array.isArray(s?.qiymat) ? s.qiymat.map(Number) : [2, 4, 6];
+}
+export async function postKunlariniYoz(kunlar: number[]) {
+  await jadvalTayyorla();
+  const t = [...new Set(kunlar.map(Number).filter((x) => x >= 1 && x <= 7))].sort();
+  await q(`insert into agent_sozlama (kalit, qiymat) values ('post_kunlari', $1::jsonb) on conflict (kalit) do update set qiymat = excluded.qiymat`, [JSON.stringify(t)]);
+  return { post_kunlari: t };
+}
 async function kunlikYarat() {
   if (!(await kunlikHolati())) return;
   const t = new Date(Date.now() + TASHKENT_MS);
@@ -142,8 +153,13 @@ async function kunlikYarat() {
   if (!turlar.has("kunlik"))
     await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'kunlik', $1, $2, 60)`,
       [`Kunlik video — ${kun}: research → g‘oya → ssenariy → video`, kun]);
+  const hk = t.getUTCDay() || 7;
+  if (!turlar.has("rasmpost") && (await postKunlari()).includes(hk))
+    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'rasmpost', $1, $2, 20)`,
+      [`Rasmli post — ${kun}: karusel yoki bitta rasm (Instagram + Telegram)`, kun]);
 }
 
+const mediaBorMi = (n: any) => Boolean(n?.media_url || n?.media_urls?.length || n?.tg_file_id);
 async function vazifaYarat(loyiha: string, tur: string, buyruq: string, otaId?: number, taxmin?: number) {
   await jadvalTayyorla();
   const kun = tur === "video" || tur === "kunlik" ? await videoKuni() : null;
@@ -194,6 +210,12 @@ export async function tahlilBuyrugi(chatId: number | string, arg: string, replyT
   await panelYangila();
   return yubor(chatId, `🔎 <b>#${v.id} tahlil navbatga qo'shildi</b>\n<i>${esc(v.buyruq)}</i>\n⏰ Keyingi tekshiruv: <b>${keyingiMatn()}</b> · ~15 daq\nNatija tasdiqsiz keladi va ilovadagi "Hisobotlar"da saqlanadi.`, undefined, replyTo);
 }
+export async function rasmpostBuyrugi(chatId: number | string, arg: string, replyTo?: number) {
+  if (!arg) return yubor(chatId, "🖼 Qanday post? Masalan: <code>/rasmpost tannarxni to‘g‘ri hisoblashning 5 qadami (karusel)</code>\nMavzu bermasangiz ham bo‘ladi — <code>/rasmpost o‘zing tanla</code>");
+  const v = await navbatgaQosh(arg, "rasmpost");
+  await panelYangila();
+  return yubor(chatId, `🖼 <b>#${v.id} rasmli post navbatga qo'shildi</b>\n<i>${esc(v.buyruq)}</i>\n⏰ Keyingi tekshiruv: <b>${keyingiMatn()}</b> · ~20 daq\nTayyor bo‘lganda rasmlar, Instagram caption va Telegram matnini yuboraman — siz tasdiqlaysiz.`, undefined, replyTo);
+}
 export async function kunlikBuyrugi(chatId: number | string) {
   await jadvalTayyorla();
   const on = await kunlikHolati();
@@ -201,8 +223,9 @@ export async function kunlikBuyrugi(chatId: number | string) {
     `📅 <b>Kunlik rejim: ${on ? "yoqilgan" : "o'chirilgan"}</b>`,
     "Har kuni 06:45 da agent:",
     "1. 📊 Instagram akkaunt hisobotini yuboradi (tasdiqsiz)",
-    "2. 🎬 1 ta video tayyorlaydi: research → g‘oya → ssenariy → video",
-    "3. Siz ✅ bossangiz — joylaydi",
+    "2. 🎬 1 ta video tayyorlaydi: research → g‘oya → ssenariy → video (kuniga faqat 1 ta)",
+    `3. 🖼 Post kunlari (${(await postKunlari()).map((k) => ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"][k - 1]).join(", ") || "yo‘q"}): rasmli post — karusel yoki rasm`,
+    "4. Siz ✅ bossangiz — Instagram va Telegram kanalga (har biriga o‘z matni bilan) joylaydi",
   ].join("\n"), [[on ? { text: "⏸ O'chirish", callback_data: "ag:koff" } : { text: "▶️ Yoqish", callback_data: "ag:kon" }]]);
 }
 
@@ -323,7 +346,7 @@ export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz",
     await q(`update agent_vazifalar set holat = 'tasdiqlandi', natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(qoshimcha)]);
     matn = `${bosh}\n✅ ${amal === "oz" ? "Yangi matn bilan tasdiqlandi" : "Tasdiqlandi"}${v.tur === "post" ? (amal === "hv" ? " · eng yaxshi vaqtga rejalanadi" : " · hozir joylanadi") : " · javob yuboriladi"}.\n⏰ Agent: ${keyingiMatn()}`;
   } else if (amal === "ha" || amal === "hv") {
-    if (v.natija?.media_url) {
+    if (v.natija?.media_url || v.natija?.media_urls?.length) {
       await q(`update agent_vazifalar set holat = 'tasdiqlandi', natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify({ vaqt: amal === "hv" ? "eng_yaxshi" : "hozir" })]);
       matn = `${bosh}\n✅ Tasdiqlandi.` + keyingiQadamlar(["🚀 Instagram (Zernio) va ulangan bo‘lsa Telegram kanalga joylash", "🔗 Joylangach havolani shu yerga yuboraman"]);
     } else {
@@ -341,6 +364,15 @@ export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz",
   } else if (amal === "yoq") {
     await q(`update agent_vazifalar set holat = 'rad', updated_at = now() where id = $1`, [id]);
     matn = `${bosh}\n❌ Rad etildi.`;
+  } else if (/^\s*(ig|insta|tg|telegram)\s*:/i.test(izoh ?? "")) {
+    // Matnni to'g'ridan-to'g'ri almashtirish — agent qayta ishlamaydi
+    const m = (izoh ?? "").match(/^\s*(ig|insta|tg|telegram)\s*:\s*([\s\S]+)$/i)!;
+    const tgmi = /^t/i.test(m[1]);
+    const yangi = m[2].trim();
+    await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(tgmi ? { tg_matn: yangi } : { caption: yangi })]);
+    await yubor(egasi(), `✏️ <b>#${id}</b> — ${tgmi ? "Telegram matni" : "Instagram caption"} almashtirildi:\n\n${esc(yangi)}`, tasdiqTugmalari(id, mediaBorMi(v.natija)));
+    await panelYangila();
+    return { ok: true, yangi: null };
   } else {
     if (!izoh?.trim()) throw new Error("Nimani o‘zgartirish kerakligini yozing");
     await q(
@@ -415,7 +447,7 @@ async function yurakUrdi() {
 // 90 daqiqadan ortiq navbatda qolgan og'ir ish — ishchi ishga tushmagan (ko'pincha Claude limiti)
 async function tiqilganlarniOgohlantir() {
   const rows = await q(`select id, tur, buyruq from agent_vazifalar
-    where holat = 'navbatda' and tur in ('kunlik','video','kontent','tahlil')
+    where holat = 'navbatda' and tur in ('kunlik','video','kontent','tahlil','rasmpost')
       and greatest(created_at, coalesce((kun::timestamp + interval '6 hours 45 minutes') at time zone 'Asia/Tashkent', created_at)) < now() - interval '90 minutes' and not (coalesce(natija,'{}'::jsonb) ? 'ogohlantirildi') limit 3`);
   for (const r of rows) {
     await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || '{"ogohlantirildi":true}'::jsonb where id = $1`, [r.id]);
@@ -429,7 +461,7 @@ export async function faollik() {
       coalesce(sum(extract(epoch from (updated_at - boshlangan)) / 60) filter (where boshlangan is not null and holat <> 'ishlanmoqda'), 0)::int daqiqa
     from agent_vazifalar where boshlangan > (now() at time zone 'Asia/Tashkent')::date at time zone 'Asia/Tashkent' group by 1 order by 2 desc`);
   const hafta = await q(`select coalesce(model,'—') model, count(*)::int soni from agent_vazifalar where boshlangan > now() - interval '7 days' group by 1`);
-  const tiqilgan = (await q(`select count(*)::int n from agent_vazifalar where holat = 'navbatda' and greatest(created_at, coalesce((kun::timestamp + interval '6 hours 45 minutes') at time zone 'Asia/Tashkent', created_at)) < now() - interval '90 minutes' and tur in ('kunlik','video','kontent','tahlil')`))[0].n;
+  const tiqilgan = (await q(`select count(*)::int n from agent_vazifalar where holat = 'navbatda' and greatest(created_at, coalesce((kun::timestamp + interval '6 hours 45 minutes') at time zone 'Asia/Tashkent', created_at)) < now() - interval '90 minutes' and tur in ('kunlik','video','kontent','tahlil','rasmpost')`))[0].n;
   const xato = (await q(`select count(*)::int n from agent_vazifalar where holat = 'xato' and updated_at > now() - interval '24 hours'`))[0].n;
   const t = new Date(Date.now() + TASHKENT_MS); const soat = t.getUTCHours() + t.getUTCMinutes() / 60;
   const faolVaqt = soat >= 6.75 && soat <= 23;
@@ -456,6 +488,7 @@ export async function apiKontekst() {
 export function standartReja(tur: string, buyruq: string): string[] {
   if (tur === "hisobot") return ["Instagram statistikasini yig'ish", "Kechagi kun bilan solishtirish", "Tavsiyalar", "Hisobotni yuborish"];
   if (tur === "tahlil") return ["Ma'lumot yig'ish (research)", "Tahlil", "Xulosa va tavsiyalar", "Natijani yuborish"];
+  if (tur === "rasmpost") return ["Bilim, tarix va statistikani o'qish", "Mavzu va format tanlash", "Slaydlar matni", "Dizayn va render (1080×1350)", "Instagram caption va Telegram matni", "Tekshiruv", "Natijani yuborish"];
   if (tur === "kunlik") return ["Statistika va trend research", "G'oya tanlash", "Ssenariy", "Ovoz yozish", "Sahnalar va render", "Musiqa va MP4", "Tekshiruv", "Natijani yuborish"];
   if (tur === "video" || /video|mp4|montaj/i.test(buyruq))
     return ["Ssenariyni o'qish", "Ovoz yozish", "Sahnalar va animatsiya", "Kadrlarni render qilish", "Musiqa va SFX", "MP4 yig'ish", "Tekshiruv", "Natijani yuborish"];
@@ -577,6 +610,7 @@ export async function ilovaMalumoti() {
     jadval: JADVAL,
     kunlik: await kunlikHolati(),
     bugun: bugunTosh(),
+    post_kunlari: await postKunlari(),
     vazifalar: rows.map((r) => ({
       ...r,
       otdi: r.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(r.boshlangan)) / 60000)) : null,
@@ -664,8 +698,16 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string };
+type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[] };
 
+// Tasdiq xabarida: Instagram caption va Telegram matni alohida
+function ikkiMatn(n: Natija) {
+  const qism: string[] = [];
+  if (n.caption && !String(n.matn ?? "").includes(n.caption.slice(0, 40))) qism.push(`📸 <b>Instagram caption:</b>\n${esc(n.caption)}`);
+  if (n.tg_matn) qism.push(`📢 <b>Telegram matni:</b>\n${esc(n.tg_matn)}`);
+  if (n.tg_matn || n.caption) qism.push(`<i>✏️ bosib «ig: yangi caption» yoki «tg: yangi matn» yozsangiz — darhol almashtiraman.</i>`);
+  return qism.length ? "\n\n" + qism.join("\n\n") : "";
+}
 export async function apiNatija(id: number, n: Natija) {
   const v = (await q(`select id, buyruq, izohlar, tur from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
@@ -684,11 +726,15 @@ export async function apiNatija(id: number, n: Natija) {
                   joriy = jsonb_array_length(reja) where id = $1`, [id]);
   await holatXabariniYangila(id, "tayyor");
   const sarlavha = `🤖 <b>#${id} tayyor</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
-  const tana = esc(n.matn ?? "");
+  const tana = esc(n.matn ?? "") + ikkiMatn(n);
   const izoh = n.izoh ? `\n\n💬 <i>${esc(n.izoh)}</i>` : "";
-  const kb = tasdiqTugmalari(id, Boolean(n.media_url));
+  const kb = tasdiqTugmalari(id, Boolean(n.media_url || n.media_urls?.length));
   let msgId: number;
-  if (n.media_url) {
+  if (n.media_urls && n.media_urls.length > 1) {
+    // Karusel: avval rasmlar albomi, keyin matn + tugmalar
+    await tg("sendMediaGroup", { chat_id: egasi(), media: n.media_urls.slice(0, 10).map((u, i) => ({ type: "photo", media: u, ...(i === 0 ? { caption: sarlavha, parse_mode: "HTML" } : {}) })) }).catch((e) => console.error("album", e));
+    msgId = (await yubor(egasi(), `${sarlavha}\n\n${tana.slice(0, 3800)}${izoh}`, kb)).message_id;
+  } else if (n.media_url) {
     const usul = n.media_tur === "video" ? "sendVideo" : n.media_tur === "fayl" ? "sendDocument" : "sendPhoto";
     const maydon = n.media_tur === "video" ? "video" : n.media_tur === "fayl" ? "document" : "photo";
     const toliqMatn = `${sarlavha}\n\n${tana}${izoh}`;
