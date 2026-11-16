@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
-import { apiNavbat, apiOl, apiNatija, apiHolat, apiXabar } from "../lib/agent";
+import { apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar } from "../lib/agent";
 
 // Rejali Claude shu API orqali navbatni o'qiydi va natija yuboradi.
 // Kirish: Authorization: Bearer <AGENT_SECRET>
@@ -21,7 +21,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = Number(b.id);
     switch (b.amal) {
       case "ol":
-        return res.status(200).json({ olindi: await apiOl(id) });
+        return res.status(200).json({ olindi: await apiOl(id, b.taxmin_daq ? Number(b.taxmin_daq) : undefined) });
+      case "jarayon":
+        return res.status(200).json(await apiJarayon(id, String(b.bosqich ?? ""), b.taxmin_daq ? Number(b.taxmin_daq) : undefined));
       case "natija":
         if (!b.matn) return res.status(400).json({ xato: "matn kerak" });
         return res.status(200).json(await apiNatija(id, { matn: b.matn, media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh }));
@@ -30,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "xabar":
         return res.status(200).json(await apiXabar(String(b.matn ?? "")));
       default:
-        return res.status(400).json({ xato: "amal: ol | natija | holat | xabar" });
+        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | xabar" });
     }
   } catch (e) {
     console.error(e);

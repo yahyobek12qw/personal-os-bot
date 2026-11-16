@@ -19,6 +19,37 @@ export const HOLAT_BELGI: Record<string, string> = {
 
 const LOYIHALAR: Record<string, string> = { productcrm: "product CRM", eduflow: "EduFlow" };
 
+// Rejali Claude ishga tushadigan vaqtlar (Toshkent). Rejali vazifa jadvali bilan bir xil bo'lishi shart.
+export const JADVAL = ["07:37", "09:37", "11:37", "13:37", "15:37", "17:37", "22:37"];
+const TASHKENT_MS = 5 * 3600 * 1000;
+const hhmm = (ms: number) => new Date(ms + TASHKENT_MS).toISOString().slice(11, 16);
+
+// Keyingi tekshiruv vaqti va unga qancha qolgani
+export function keyingiTekshiruv(hozir = Date.now()) {
+  const t = new Date(hozir + TASHKENT_MS);
+  const kun = t.toISOString().slice(0, 10);
+  for (let k = 0; k < 2; k++) {
+    for (const v of JADVAL) {
+      const ms = Date.parse(`${kun}T${v}:00Z`) - TASHKENT_MS + k * 86400000;
+      if (ms > hozir) return { vaqt: v, ertaga: k === 1, qoldi: Math.round((ms - hozir) / 60000) };
+    }
+  }
+  return { vaqt: JADVAL[0], ertaga: true, qoldi: 0 };
+}
+export const davomiylik = (daq: number) => (daq < 60 ? `${daq} daq` : `${Math.floor(daq / 60)} soat${daq % 60 ? ` ${daq % 60} daq` : ""}`);
+const keyingiMatn = () => {
+  const k = keyingiTekshiruv();
+  return `${k.ertaga ? "ertaga" : "bugun"} ${k.vaqt} (${davomiylik(k.qoldi)}dan keyin)`;
+};
+// Buyruqqa qarab taxminiy ish vaqti (daqiqa)
+export function taxminiyVaqt(buyruq: string) {
+  const b = buyruq.toLowerCase();
+  if (/video|mp4|animatsiya|montaj/.test(b)) return 45;
+  if (/reels|ssenariy|karusel|carousel/.test(b)) return 15;
+  if (/g'oya|goya|idea/.test(b)) return 10;
+  return 10;
+}
+
 let tayyor = false;
 export async function jadvalTayyorla() {
   if (tayyor) return;
@@ -36,6 +67,11 @@ export async function jadvalTayyorla() {
     updated_at timestamptz not null default now()
   )`);
   await q(`create index if not exists av_holat on agent_vazifalar (holat)`);
+  await q(`alter table agent_vazifalar
+    add column if not exists qadamlar jsonb not null default '[]'::jsonb,
+    add column if not exists taxmin_daq int,
+    add column if not exists boshlangan timestamptz,
+    add column if not exists holat_msg int`);
   tayyor = true;
 }
 
@@ -73,7 +109,9 @@ export async function kontentBuyrugi(chatId: number | string, arg: string, reply
       `🤖 <b>#${v.id} navbatga qo'shildi</b> · ${LOYIHALAR[v.loyiha]}`,
       `<i>${esc(v.buyruq)}</i>`,
       "",
-      "Claude keyingi tekshiruvda oladi va natijani shu yerga tasdiqlash tugmalari bilan yuboradi.",
+      `⏰ Keyingi tekshiruv: <b>${keyingiMatn()}</b>`,
+      `⏱ Ishning o'zi taxminan <b>${davomiylik(taxminiyVaqt(v.buyruq))}</b>`,
+      "Claude ishni boshlaganda har bir qadamni shu yerda ko'rasiz.",
     ].join("\n"),
     [[{ text: "📋 Navbat", callback_data: "ag:ls" }]],
     replyTo,
@@ -83,12 +121,23 @@ export async function kontentBuyrugi(chatId: number | string, arg: string, reply
 export async function navbatXabari(): Promise<{ text: string; kb: Klaviatura }> {
   await jadvalTayyorla();
   const rows = await q(
-    `select id, loyiha, buyruq, holat from agent_vazifalar
+    `select id, loyiha, buyruq, holat, qadamlar, taxmin_daq,
+            extract(epoch from (now() - boshlangan))::int / 60 otdi
+     from agent_vazifalar
      order by (holat in ('joylandi','rad')) , id desc limit 12`,
   );
-  if (!rows.length) return { text: "🤖 <b>Agent navbati bo'sh.</b>\nYangi vazifa: <code>/kontent Reels: ...</code>", kb: [] };
+  const kt = `⏰ Keyingi tekshiruv: ${keyingiMatn()}`;
+  if (!rows.length) return { text: `🤖 <b>Agent navbati bo'sh.</b>\nYangi vazifa: <code>/kontent Reels: ...</code>\n\n${kt}`, kb: [] };
   const t = ["🤖 <b>Agent navbati</b>", ""];
-  for (const r of rows) t.push(`<b>#${r.id}</b> ${HOLAT_BELGI[r.holat] ?? r.holat} · ${esc(String(r.buyruq).slice(0, 60))}`);
+  for (const r of rows) {
+    t.push(`<b>#${r.id}</b> ${HOLAT_BELGI[r.holat] ?? r.holat} · ${esc(String(r.buyruq).slice(0, 60))}`);
+    if (r.holat === "ishlanmoqda") {
+      const q2 = (r.qadamlar ?? []) as any[];
+      const oxirgi = q2.length ? q2[q2.length - 1].matn : "boshlandi";
+      t.push(`   ↳ ${esc(oxirgi)} · ${davomiylik(r.otdi ?? 0)} o'tdi${r.taxmin_daq ? ` / ~${davomiylik(r.taxmin_daq)}` : ""}`);
+    }
+  }
+  t.push("", kt);
   return { text: t.join("\n"), kb: [[{ text: "🔄 Yangilash", callback_data: "ag:ls" }]] };
 }
 
@@ -201,13 +250,61 @@ export async function apiNavbat() {
   );
 }
 
-export async function apiOl(id: number) {
+// Vazifaning jonli holat xabari: qadamlar, o'tgan va taxminiy vaqt
+function holatMatni(v: any, yakun?: string) {
+  const qadamlar = (v.qadamlar ?? []) as { matn: string; vaqt: string }[];
+  const otdi = v.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(v.boshlangan)) / 60000)) : 0;
+  const t = [
+    `${yakun ? "✅" : "⚙️"} <b>#${v.id} ${yakun ?? "ishlanmoqda"}</b> · <i>${esc(String(v.buyruq).slice(0, 70))}</i>`,
+    v.boshlangan ? `🕐 Boshlandi ${hhmm(Date.parse(v.boshlangan))} · ${davomiylik(otdi)} o'tdi${!yakun && v.taxmin_daq ? ` · taxminan ${davomiylik(Math.max(1, v.taxmin_daq - otdi))} qoldi` : ""}` : "",
+    "",
+  ];
+  qadamlar.forEach((x, i) => {
+    const oxirgi = i === qadamlar.length - 1 && !yakun;
+    t.push(`${oxirgi ? "⏳" : "✔️"} ${esc(x.matn)} <i>${hhmm(Date.parse(x.vaqt))}</i>`);
+  });
+  return t.filter((x, i) => x || i === 2).join("\n");
+}
+
+async function holatXabariniYangila(id: number, yakun?: string) {
+  const v = (await q(`select id, buyruq, qadamlar, taxmin_daq, boshlangan, holat_msg from agent_vazifalar where id = $1`, [id]))[0];
+  if (!v) return;
+  const text = holatMatni(v, yakun);
+  if (v.holat_msg) {
+    await tg("editMessageText", { chat_id: egasi(), message_id: v.holat_msg, text, parse_mode: "HTML" }).catch(() => {});
+  } else {
+    const m = await yubor(egasi(), text);
+    await q(`update agent_vazifalar set holat_msg = $2 where id = $1`, [id, m.message_id]);
+  }
+}
+
+export async function apiOl(id: number, taxminDaq?: number) {
   const r = (await q(
-    `update agent_vazifalar set holat = 'ishlanmoqda', urinish = urinish + 1, updated_at = now()
-     where id = $1 and holat = 'navbatda' returning id`,
-    [id],
+    `update agent_vazifalar
+       set holat = 'ishlanmoqda', urinish = urinish + 1, updated_at = now(), boshlangan = now(),
+           taxmin_daq = coalesce($2, taxmin_daq), holat_msg = null,
+           qadamlar = jsonb_build_array(jsonb_build_object('matn', 'Vazifa olindi', 'vaqt', now()))
+     where id = $1 and holat = 'navbatda' returning id, buyruq`,
+    [id, taxminDaq ?? null],
   ))[0];
-  return Boolean(r);
+  if (!r) return false;
+  if (!taxminDaq) await q(`update agent_vazifalar set taxmin_daq = $2 where id = $1 and taxmin_daq is null`, [id, taxminiyVaqt(r.buyruq)]);
+  await holatXabariniYangila(id);
+  return true;
+}
+
+// Agent har bir qadamni yuboradi: holat xabari tahrirlanadi
+export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number) {
+  const r = (await q(
+    `update agent_vazifalar
+       set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', $2::text, 'vaqt', now())),
+           taxmin_daq = coalesce($3, taxmin_daq), updated_at = now()
+     where id = $1 and holat = 'ishlanmoqda' returning id`,
+    [id, bosqich.slice(0, 120), taxminDaq ?? null],
+  ))[0];
+  if (!r) throw new Error("vazifa ishlanmoqda holatida emas");
+  await holatXabariniYangila(id);
+  return { ok: true };
 }
 
 type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string };
@@ -215,6 +312,8 @@ type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" |
 export async function apiNatija(id: number, n: Natija) {
   const v = (await q(`select id, buyruq, izohlar from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
+  await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', 'Natija yuborildi', 'vaqt', now())) where id = $1`, [id]);
+  await holatXabariniYangila(id, "tayyor");
   const sarlavha = `🤖 <b>#${id} tayyor</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
   const tana = esc(n.matn ?? "");
   const izoh = n.izoh ? `\n\n💬 <i>${esc(n.izoh)}</i>` : "";
