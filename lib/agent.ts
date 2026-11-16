@@ -75,7 +75,8 @@ export async function jadvalTayyorla() {
     add column if not exists holat_msg int,
     add column if not exists ota_id int,
     add column if not exists reja jsonb not null default '[]'::jsonb,
-    add column if not exists joriy int not null default 0`);
+    add column if not exists joriy int not null default 0,
+    add column if not exists kun date`);
   await q(`create table if not exists agent_sozlama (kalit text primary key, qiymat jsonb)`);
   tayyor = true;
 }
@@ -88,11 +89,42 @@ export function buyruqniAjrat(arg: string): { loyiha: string; buyruq: string } {
   return { loyiha: l.startsWith("edu") ? "eduflow" : "productcrm", buyruq: m[2].trim() };
 }
 
-export async function navbatgaQosh(arg: string) {
+export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil" };
+export async function navbatgaQosh(arg: string, turMajburiy?: string) {
   await jadvalTayyorla();
   const { loyiha, buyruq } = buyruqniAjrat(arg);
-  const r = (await q(`insert into agent_vazifalar (loyiha, buyruq) values ($1, $2) returning id`, [loyiha, buyruq]))[0];
-  return { id: r.id as number, loyiha, buyruq };
+  const tur = turMajburiy ?? (/^(tahlil|research|analiz)\s*:/i.test(buyruq) ? "tahlil" : "kontent");
+  const r = (await q(`insert into agent_vazifalar (loyiha, tur, buyruq, taxmin_daq) values ($1, $2, $3, $4) returning id`,
+    [loyiha, tur, buyruq, tur === "tahlil" ? 15 : taxminiyVaqt(buyruq)]))[0];
+  return { id: r.id as number, loyiha, buyruq, tur };
+}
+
+// ======================= Kunlik rejim =======================
+export async function kunlikHolati(): Promise<boolean> {
+  const s = (await q(`select qiymat from agent_sozlama where kalit = 'kunlik'`))[0];
+  return s ? Boolean(s.qiymat?.yoqilgan) : true; // standart: yoqilgan
+}
+export async function kunlikYoq(yoqilgan: boolean) {
+  await jadvalTayyorla();
+  await q(`insert into agent_sozlama (kalit, qiymat) values ('kunlik', $1::jsonb)
+           on conflict (kalit) do update set qiymat = excluded.qiymat`, [JSON.stringify({ yoqilgan })]);
+  await panelYangila();
+  return { yoqilgan };
+}
+// Har kuni 06:00 dan keyin birinchi tekshiruvda: akkaunt hisoboti + 1 ta video (boshidan oxirigacha)
+async function kunlikYarat() {
+  if (!(await kunlikHolati())) return;
+  const t = new Date(Date.now() + TASHKENT_MS);
+  if (t.getUTCHours() < 6) return;
+  const kun = t.toISOString().slice(0, 10);
+  const bor = await q(`select tur from agent_vazifalar where kun = $1`, [kun]);
+  const turlar = new Set(bor.map((r: any) => r.tur));
+  if (!turlar.has("hisobot"))
+    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'hisobot', $1, $2, 10)`,
+      [`Kunlik akkaunt hisoboti — ${kun}`, kun]);
+  if (!turlar.has("kunlik"))
+    await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'kunlik', $1, $2, 60)`,
+      [`Kunlik video — ${kun}: research → g‘oya → ssenariy → video`, kun]);
 }
 
 async function vazifaYarat(loyiha: string, tur: string, buyruq: string, otaId?: number, taxmin?: number) {
@@ -136,6 +168,24 @@ export async function kontentBuyrugi(chatId: number | string, arg: string, reply
     [[{ text: "📋 Navbat", callback_data: "ag:ls" }]],
     replyTo,
   );
+}
+
+export async function tahlilBuyrugi(chatId: number | string, arg: string, replyTo?: number) {
+  if (!arg) return yubor(chatId, "🔎 Nimani tahlil qilay? Masalan: <code>/tahlil raqobatchilar qanday Reels qilyapti</code>");
+  const v = await navbatgaQosh(arg, "tahlil");
+  await panelYangila();
+  return yubor(chatId, `🔎 <b>#${v.id} tahlil navbatga qo'shildi</b>\n<i>${esc(v.buyruq)}</i>\n⏰ Keyingi tekshiruv: <b>${keyingiMatn()}</b> · ~15 daq\nNatija tasdiqsiz keladi va ilovadagi "Hisobotlar"da saqlanadi.`, undefined, replyTo);
+}
+export async function kunlikBuyrugi(chatId: number | string) {
+  await jadvalTayyorla();
+  const on = await kunlikHolati();
+  return yubor(chatId, [
+    `📅 <b>Kunlik rejim: ${on ? "yoqilgan" : "o'chirilgan"}</b>`,
+    "Har kuni 06:45 da agent:",
+    "1. 📊 Instagram akkaunt hisobotini yuboradi (tasdiqsiz)",
+    "2. 🎬 1 ta video tayyorlaydi: research → g‘oya → ssenariy → video",
+    "3. Siz ✅ bossangiz — joylaydi",
+  ].join("\n"), [[on ? { text: "⏸ O'chirish", callback_data: "ag:koff" } : { text: "▶️ Yoqish", callback_data: "ag:kon" }]]);
 }
 
 export async function navbatXabari(): Promise<{ text: string; kb: Klaviatura }> {
@@ -182,6 +232,12 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
     await javob(cq.id, "🔄 Yangilandi");
     const p = await panelMatni();
     await tg("editMessageText", { chat_id: chatId, message_id: msgId, text: p.text, parse_mode: "HTML", reply_markup: { inline_keyboard: p.kb } }).catch(() => {});
+    return true;
+  }
+  if (amal === "kon" || amal === "koff") {
+    await kunlikYoq(amal === "kon");
+    await javob(cq.id, amal === "kon" ? "Kunlik rejim yoqildi" : "Kunlik rejim o'chirildi");
+    await tg("editMessageReplyMarkup", { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: [[amal === "kon" ? { text: "⏸ O'chirish", callback_data: "ag:koff" } : { text: "▶️ Yoqish", callback_data: "ag:kon" }]] } }).catch(() => {});
     return true;
   }
   if (amal === "new") {
@@ -293,6 +349,7 @@ const egasi = () => String(process.env.ALLOWED_CHAT_ID);
 
 export async function apiNavbat() {
   await jadvalTayyorla();
+  await kunlikYarat();
   // 2 soatdan ortiq "ishlanmoqda"da qolganlarini qayta navbatga qaytaramiz
   await q(`update agent_vazifalar set holat = 'navbatda', updated_at = now()
            where holat = 'ishlanmoqda' and updated_at < now() - interval '2 hours'`);
@@ -300,12 +357,27 @@ export async function apiNavbat() {
     `select v.id, v.loyiha, v.tur, v.buyruq, v.holat, v.natija, v.izohlar, v.urinish, v.ota_id, o.natija ota_natija,
             to_char(v.created_at at time zone 'Asia/Tashkent','YYYY-MM-DD HH24:MI') yaratilgan
      from agent_vazifalar v left join agent_vazifalar o on o.id = v.ota_id
-     where v.holat in ('navbatda','tasdiqlandi') order by v.id`,
+     where v.holat in ('navbatda','tasdiqlandi')
+     order by case v.tur when 'hisobot' then 0 when 'tahlil' then 1 else 2 end, v.id`,
   );
+}
+// Agent uchun kontekst: oxirgi ishlar (takrorlamaslik) va oxirgi hisobot (solishtirish)
+export async function apiKontekst() {
+  const tarix = await q(
+    `select id, tur, buyruq, holat, natija->>'havola' havola, to_char(updated_at at time zone 'Asia/Tashkent','YYYY-MM-DD') sana
+     from agent_vazifalar where holat in ('bajarildi','joylandi','tasdiqlandi','tasdiq') and tur <> 'hisobot'
+     order by id desc limit 20`);
+  const hisobot = (await q(
+    `select natija->>'matn' matn, to_char(updated_at at time zone 'Asia/Tashkent','YYYY-MM-DD') sana
+     from agent_vazifalar where tur = 'hisobot' and natija is not null order by id desc limit 1`))[0] ?? null;
+  return { tarix, oxirgi_hisobot: hisobot, kunlik: await kunlikHolati() };
 }
 
 // Tur bo'yicha standart reja (agent `ol` da o'z rejasini yuborishi ham mumkin)
 export function standartReja(tur: string, buyruq: string): string[] {
+  if (tur === "hisobot") return ["Instagram statistikasini yig'ish", "Kechagi kun bilan solishtirish", "Tavsiyalar", "Hisobotni yuborish"];
+  if (tur === "tahlil") return ["Ma'lumot yig'ish (research)", "Tahlil", "Xulosa va tavsiyalar", "Natijani yuborish"];
+  if (tur === "kunlik") return ["Statistika va trend research", "G'oya tanlash", "Ssenariy", "Ovoz yozish", "Sahnalar va render", "Musiqa va MP4", "Tekshiruv", "Natijani yuborish"];
   if (tur === "video" || /video|mp4|montaj/i.test(buyruq))
     return ["Ssenariyni o'qish", "Ovoz yozish", "Sahnalar va animatsiya", "Kadrlarni render qilish", "Musiqa va SFX", "MP4 yig'ish", "Tekshiruv", "Natijani yuborish"];
   if (/g'oya|goya/i.test(buyruq)) return ["Bilim va trendlarni o'qish", "10 ta g'oya", "Saralash va tekshiruv", "Natijani yuborish"];
@@ -400,6 +472,7 @@ export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
 
   const jami = navbat.reduce((a, r) => a + (r.taxmin_daq ?? taxminiyVaqt(r.buyruq)), 0);
   if (navbat.length) t.push("", `🧮 Navbatdagi ish jami: ~${davomiylik(jami)}`);
+  t.push("", (await kunlikHolati()) ? "📅 Kunlik rejim: <b>yoqilgan</b> (hisobot + 1 video)" : "📅 Kunlik rejim: o'chirilgan");
   t.push("", `<i>Yangilandi ${hhmm(Date.now())}</i>`);
   return { text: t.join("\n"), kb: [
     [{ text: "➕ Yangi vazifa", callback_data: "ag:new" }, { text: "🔄 Yangilash", callback_data: "ag:pn" }],
@@ -420,6 +493,7 @@ export async function ilovaMalumoti() {
     hozir: Date.now(),
     keyingi: { vaqt: k.vaqt, ertaga: k.ertaga, qoldi: k.qoldi },
     jadval: JADVAL,
+    kunlik: await kunlikHolati(),
     vazifalar: rows.map((r) => ({
       ...r,
       otdi: r.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(r.boshlangan)) / 60000)) : null,
@@ -431,6 +505,7 @@ export async function ilovaMalumoti() {
 export async function ilovadanQosh(matn: string) {
   if (!matn.trim()) throw new Error("Vazifa matnini yozing");
   const v = await navbatgaQosh(matn.trim());
+  void v.tur;
   await yubor(egasi(), [
     `🤖 <b>#${v.id} navbatga qo'shildi</b> (ilovadan) · ${LOYIHALAR[v.loyiha]}`,
     `<i>${esc(v.buyruq)}</i>`,
@@ -509,8 +584,19 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
 type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string };
 
 export async function apiNatija(id: number, n: Natija) {
-  const v = (await q(`select id, buyruq, izohlar from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, izohlar, tur from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
+  if (v.tur === "hisobot" || v.tur === "tahlil") {
+    // Hisobot va tahlil tasdiq talab qilmaydi
+    await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
+                    joriy = jsonb_array_length(reja), holat = 'bajarildi', natija = $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(n)]);
+    await holatXabariniYangila(id, "tayyor");
+    const bosh = v.tur === "hisobot" ? "📊 <b>Akkaunt hisoboti</b>" : `🔎 <b>Tahlil #${id}</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
+    const m = await yubor(egasi(), `${bosh}\n\n${esc(n.matn ?? "").slice(0, 3800)}`, [[{ text: "📱 Ilovada", web_app: { url: `${ILOVA_URL}#agent` } }]]);
+    await q(`update agent_vazifalar set tg_msg = $2 where id = $1`, [id, m.message_id]);
+    await panelYangila();
+    return { tg_msg: m.message_id };
+  }
   await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
                   joriy = jsonb_array_length(reja) where id = $1`, [id]);
   await holatXabariniYangila(id, "tayyor");

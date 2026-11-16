@@ -7,7 +7,7 @@ import { sttBor, transkripsiya } from "../lib/stt";
 import { yubor } from "../lib/telegram";
 import { qisqa } from "../lib/ids";
 import { q } from "../lib/db";
-import { ilovaMalumoti, ilovadanQosh, qaror } from "../lib/agent";
+import { ilovaMalumoti, ilovadanQosh, qaror, kunlikYoq } from "../lib/agent";
 
 type Amal = (b: any) => Promise<unknown>;
 const ID = (b: any) => { const id = String(b.id || ""); if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Noto'g'ri ID"); return id; };
@@ -34,6 +34,7 @@ const AMALLAR: Record<string, Amal> = {
   faylOchir: (b) => v2.faylOchir(ID(b)),
   agent: () => ilovaMalumoti(),
   agentQosh: (b) => ilovadanQosh(String(b.matn || "")),
+  agentKunlik: (b) => kunlikYoq(Boolean(b.yoqilgan)),
   agentQaror: (b) => {
     const amal = String(b.amal);
     if (!["ha", "yoq", "oz"].includes(amal)) throw new Error("Noto'g'ri amal");

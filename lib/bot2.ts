@@ -8,7 +8,7 @@ import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, type Klav
 import { arxivga, arxivChat, arxivdanYubor, type Bolim, type ArxivFayl } from "./arxiv";
 import { qisqa, toliq } from "./ids";
 import { sttBor, transkripsiya } from "./stt";
-import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila } from "./agent";
+import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila, tahlilBuyrugi, kunlikBuyrugi } from "./agent";
 
 const MAKS_YUKLAB_OLISH = 20 * 1024 * 1024;
 
@@ -129,7 +129,8 @@ export const YORDAM = [
   "Pastdagi tugmalar: ☀️ Bugun · 🗓 Hafta · 📥 Inbox · 💰 Pul · 🔁 Odatlar · 🔍 Qidirish",
   "Qidiruvni tez qilish: <code>/qidir TATU</code>",
   "",
-  "🤖 <b>Kontent agenti</b>: <code>/kontent Reels: mavzu</code> (EduFlow uchun <code>/kontent eduflow: ...</code>) · navbat: /agent",
+  "🤖 <b>Kontent agenti</b>: <code>/kontent Reels: mavzu</code> (EduFlow uchun <code>/kontent eduflow: ...</code>) · panel: /agent",
+  "🔎 <code>/tahlil savol</code> — research va tahlil · 📅 /kunlik — har kuni hisobot + 1 video",
 ].join("\n");
 
 const qatorEl = (x: any) => `${x.holat === "bajarildi" ? "✅" : x.tur === "vazifa" || x.tur === "qadam" ? "▫️" : TUR_BELGI[x.tur] ?? "•"} ${x.vaqt ? `<b>${x.vaqt}</b> ` : ""}${x.holat === "bajarildi" ? `<s>${esc(x.nom)}</s>` : esc(x.nom)}`;
@@ -312,6 +313,8 @@ export async function xabarKeldi(m: any) {
     const arg = tugma ? "" : qolgan.join(" ").trim();
     if (cmd === "start" || cmd === "yordam" || cmd === "help") return tg("sendMessage", { chat_id: chatId, text: YORDAM, parse_mode: "HTML", reply_markup: MENYU });
     if (cmd === "kontent" || cmd === "k") return kontentBuyrugi(chatId, arg, m.message_id);
+    if (cmd === "tahlil" || cmd === "research") return tahlilBuyrugi(chatId, arg, m.message_id);
+    if (cmd === "kunlik") return kunlikBuyrugi(chatId);
     if (cmd === "agent") return panelYangila(true);
     if (cmd === "ilova") return yubor(chatId, "📱 <b>Personal OS</b>\nBugun, Kalendar, Sohalar va Inbox — hammasi bir joyda.", [[ilova()]]);
     if (cmd === "qidir" && !arg) return tg("sendMessage", { chat_id: chatId, text: "🔍 Nimani qidiramiz? Shu xabarga javob qilib so'z yozing.", reply_markup: { force_reply: true, input_field_placeholder: "Qidiruv so'zi" } });
