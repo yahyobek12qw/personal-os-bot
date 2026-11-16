@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Personal OS</title>
+<title>Shaxsiy · Studiya</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -116,7 +116,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
   <button data-act="tab" data-tab="kalendar" aria-label="Kalendar"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Kalendar</button>
   <button data-act="tez" class="plus" aria-label="Yangi qo‘shish"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
   <button data-act="tab" data-tab="sohalar" aria-label="Sohalar"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>Sohalar</button>
-  <button data-act="tab" data-tab="agent" aria-label="Agent"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>Agent<span class="badge" id="abadge" hidden></span></button>
+  <button data-act="studiya" aria-label="Studiya"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>Studiya</button>
   <button data-act="tab" data-tab="inbox" aria-label="Inbox"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5 5h14l2 8v6H3v-6z"/></svg>Inbox<span class="badge" id="ibadge" hidden></span></button>
 </nav>
 <div id="veil" data-act="close"></div>
@@ -826,6 +826,7 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
     const a = el.dataset.act;
     if (a !== 'tanla' && el.tagName !== 'LABEL') ev.preventDefault();
     if (a === 'tab') return och(el.dataset.tab);
+    if (a === 'studiya') return location.assign('/app/');
     if (a === 'orqa') return orqa();
     if (a === 'qayta') return yukla(S.tab);
     if (a === 'close') return yop();
@@ -951,7 +952,8 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
   const st = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
   const eid = (h.match(/^e=([0-9a-f-]{36})$/) || st.match(/^e_([0-9a-f-]{36})$/) || [])[1];
   if (eid) { S.stek = [{ tab: 'bugun', par: null }]; S.tab = 'element'; S.par.element = { id: eid }; render(); yukla('element'); api('bugun').then((r) => { S.data['bugun:null'] = r; }).catch(() => {}); }
-  else och(TABS.includes(h) ? h : 'bugun');
+  else if (h === 'agent') location.replace('/app/');
+  else och(TABS.includes(h) && h !== 'agent' ? h : 'bugun');
 })();
 </script>
 </body>

@@ -4,7 +4,7 @@
 import { q } from "./db";
 import * as v2 from "./v2";
 import { kunQosh } from "./parse";
-import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, type Klaviatura, type Tugma } from "./telegram";
+import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, SHAXSIY_URL, type Klaviatura, type Tugma } from "./telegram";
 import { arxivga, arxivChat, arxivdanYubor, type Bolim, type ArxivFayl } from "./arxiv";
 import { qisqa, toliq } from "./ids";
 import { sttBor, transkripsiya } from "./stt";
@@ -41,7 +41,7 @@ function sanaQ(s?: string | null) {
   const d = new Date(s + "T00:00:00Z");
   return `${d.getUTCDate()}-${OYLAR[d.getUTCMonth()]}`;
 }
-const ilova = (matn = "📱 Ilovani ochish", hash?: string): Tugma => ({ text: matn, web_app: { url: hash ? `${ILOVA_URL}#${hash}` : ILOVA_URL } });
+const ilova = (matn = "📱 Ilovani ochish", hash?: string): Tugma => ({ text: matn, web_app: { url: hash ? `${SHAXSIY_URL}#${hash}` : ILOVA_URL } });
 
 let _sohalar: Map<string, any> | null = null;
 async function sohalar() {
@@ -102,7 +102,7 @@ export const MENYU = {
   keyboard: [
     [{ text: "☀️ Bugun" }, { text: "🗓 Hafta" }, { text: "📥 Inbox" }],
     [{ text: "💰 Pul" }, { text: "🔁 Odatlar" }, { text: "🔍 Qidirish" }],
-    [{ text: "🤖 Agent" }, { text: "📱 Ilova", web_app: { url: ILOVA_URL } }, { text: "❓ Yordam" }],
+    [{ text: "🤖 Agent" }, { text: "🎛 Studiya", web_app: { url: ILOVA_URL } }, { text: "❓ Yordam" }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -160,13 +160,13 @@ export async function bugunXabari(sarlavha?: string): Promise<{ text: string; kb
   for (let i = 0; i < ochiq.length; i += 2) kb.push(ochiq.slice(i, i + 2).map((x: any) => ({ text: `✅ ${x.nom.slice(0, 22)}`, callback_data: `bd:${qisqa(x.id)}` })));
   const od = d.odatlar.filter((o) => !o.done).slice(0, 4);
   if (od.length) kb.push(od.map((o) => ({ text: `🔁 ${o.nom.slice(0, 14)}`, callback_data: `ob:${qisqa(o.id)}` })));
-  kb.push([{ text: "🔄 Yangilash", callback_data: "bugun" }, ilova("📱 Ilova")]);
+  kb.push([{ text: "🔄 Yangilash", callback_data: "bugun" }, ilova("📱 Shaxsiy", "bugun")]);
   return { text: t.join("\n"), kb };
 }
 
 export async function inboxXabari(): Promise<{ text: string; kb: Klaviatura }> {
   const { items } = await v2.inbox();
-  if (!items.length) return { text: "📥 <b>Inbox bo'sh</b>\nHammasi saralangan.", kb: [[ilova()]] };
+  if (!items.length) return { text: "📥 <b>Inbox bo'sh</b>\nHammasi saralangan.", kb: [[ilova("📱 Shaxsiy", "inbox")]] };
   const t = [`📥 <b>Inbox</b> · ${items.length} ta`, "", ...items.slice(0, 15).map((x: any) => `${TUR_BELGI[x.tur] ?? "•"} ${esc(x.nom)}`)];
   if (items.length > 15) t.push(`<i>…yana ${items.length - 15} ta</i>`);
   t.push("", "<i>Bittasini saralash uchun bosing:</i>");
@@ -332,7 +332,7 @@ export async function xabarKeldi(m: any) {
     if (cmd === "post") return yubor(chatId, "📤 <b>Post joylash</b>\nRasm yoki videoni yuboring va izohiga (caption) <code>/post</code> dan keyin matnni yozing:\n<code>/post Tikuvxonangiz uchun yangi imkoniyat…</code>\nMen ko'rsataman, siz ✅ bosasiz — agent Instagram'ga (va ulangan bo'lsa kanalga) joylaydi.");
     if (cmd === "agent") return panelYangila(true);
     if (cmd === "studio") return yubor(chatId, "🎛 <b>Studiya</b>\nTelefonda — agent: kelgan kontentni ko‘rib, tasdiqlaysiz. Planshet yoki kompyuterda — to‘liq studiya: loyihalar doskasi, variantlar, qahramonlar, ovozlar (havola 30 kun amal qiladi).", [[{ text: "📱 Agent (Telegram ichida)", web_app: { url: STUDIO_URL } }], [{ text: "🖥 To‘liq studiya (brauzer)", url: studioHavola() }]]);
-    if (cmd === "ilova") return yubor(chatId, "📱 <b>Personal OS</b>\nBugun, Kalendar, Sohalar va Inbox — hammasi bir joyda.", [[ilova()]]);
+    if (cmd === "ilova") return yubor(chatId, "📱 <b>Ilova</b>\n🎛 Studiya — asosiy ish (kontent, agent).\n🏠 Shaxsiy — Bugun, Kalendar, Sohalar, Inbox.", [[ilova("🎛 Studiya"), ilova("🏠 Shaxsiy", "bugun")]]);
     if (cmd === "qidir" && !arg) return tg("sendMessage", { chat_id: chatId, text: "🔍 Nimani qidiramiz? Shu xabarga javob qilib so'z yozing.", reply_markup: { force_reply: true, input_field_placeholder: "Qidiruv so'zi" } });
     await yozmoqda(chatId);
     const x =
@@ -547,6 +547,6 @@ export async function kechkiXabar(): Promise<{ text: string; kb: Klaviatura }> {
   if (!d.kundalik) t.push("", "📓 Kun qanday o'tdi? Ilovada bir-ikki qator yozib qo'ying.");
   const kb: Klaviatura = [];
   for (const x of qolgan.slice(0, 4)) kb.push([{ text: `➡️ Ertaga: ${x.nom.slice(0, 26)}`, callback_data: `me:${qisqa(x.id)}` }]);
-  kb.push([ilova("📱 Ilova")]);
+  kb.push([ilova("📱 Shaxsiy", "bugun")]);
   return { text: t.join("\n"), kb };
 }
