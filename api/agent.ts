@@ -4,7 +4,7 @@ import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
-import { savolEslatma } from "../lib/guruh";
+import { savolEslatma, guruh } from "../lib/guruh";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -39,6 +39,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("X-Jami", String(f.jami)); res.setHeader("X-Bo", String(f.bo)); res.setHeader("X-Oxir", String(f.oxir)); res.setHeader("X-Nom", f.nom ?? "fayl");
       return res.status(200).send(f.data);
+    }
+    if (req.method === "GET" && req.query.guruh) {
+      const g = await guruh();
+      const a = g ? await tg("getChatMember", { chat_id: g.id, user_id: Number(String(process.env.TELEGRAM_BOT_TOKEN).split(":")[0]) }).catch((e) => ({ xato: String(e) })) : null;
+      return res.status(200).json({ guruh: g, bot: a ? { status: (a as any).status, xato: (a as any).xato ?? null, ochira_oladi: (a as any).can_delete_messages ?? null } : null });
     }
     if (req.method === "GET" && req.query.rasm) return res.status(200).json(await rasmTekshir());
     if (req.method === "GET" && req.query.buyruqlar) {
