@@ -3,6 +3,7 @@
 import { q } from "./db";
 import { tg, yubor, esc, type Klaviatura } from "./telegram";
 import { jadvalTayyorla, panelYangila, keyingiMatnOchiq } from "./agent";
+import { zernioBor, mediaYukla, postYarat as zPost, engYaxshiVaqt, postHavolasi } from "./zernio";
 
 const egasi = () => String(process.env.ALLOWED_CHAT_ID);
 
@@ -129,4 +130,81 @@ export async function faylBolak(id: number, bo: number, gacha: number) {
   const buf = Buffer.from(await r.arrayBuffer());
   const oxir = Math.min(buf.length - 1, gacha, bo + 3_999_999);
   return { jami: buf.length, bo, oxir, data: buf.subarray(bo, oxir + 1), nom: String(f.file_path).split("/").pop() };
+}
+
+// ======================= Server orqali joylash (Zernio API kaliti bo'lsa) =======================
+
+// Instagram caption: natija.caption bo'lmasa, matndan "caption" bo'limini ajratamiz
+export function captionAjrat(n: any): string {
+  if (n?.caption) return String(n.caption).slice(0, 2200);
+  const m = String(n?.matn ?? "");
+  const i = m.search(/caption[^\n]*\n/i);
+  if (i >= 0) {
+    const qism = m.slice(i).replace(/^[^\n]*\n/, "");
+    const tugash = qism.search(/\n\s*(📢|telegram|⚠️|✅ tekshiruv|bilib qo)/i);
+    return (tugash > 0 ? qism.slice(0, tugash) : qism).trim().slice(0, 2200);
+  }
+  return m.trim().slice(0, 2200);
+}
+
+const toliqUrl = (n: any) => n?.toliq_url || (String(n?.izoh ?? "").match(/https?:\/\/\S+\.(mp4|mov|jpg|jpeg|png)\S*/i) ?? [])[0] || n?.media_url || null;
+export const mediaBor = (n: any) => Boolean(n?.tg_file_id || toliqUrl(n));
+
+// vaqt: "hozir" | "eng_yaxshi" | "YYYY-MM-DDTHH:mm" (Toshkent)
+export async function serverdaJoyla(id: number, vaqt: string) {
+  const v = (await q(`select id, tur, buyruq, natija from agent_vazifalar where id = $1`, [id]))[0];
+  if (!v) throw new Error("Vazifa topilmadi");
+  const n = v.natija ?? {};
+  let url = toliqUrl(n);
+  const tur: "video" | "image" = n.media_tur === "rasm" ? "image" : "video";
+  if (n.tg_file_id && !n.zernio_media) {
+    const f = await tg("getFile", { file_id: n.tg_file_id });
+    const r = await fetch(`https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${f.file_path}`);
+    if (!r.ok) throw new Error("Telegram faylini olib bo'lmadi");
+    const buf = Buffer.from(await r.arrayBuffer());
+    url = await mediaYukla(buf, String(f.file_path).split("/").pop() || "media", tur === "video" ? "video/mp4" : "image/jpeg");
+  }
+  if (!url) throw new Error("Joylash uchun media topilmadi");
+  let sana: Date | null = null;
+  if (vaqt === "eng_yaxshi") sana = await engYaxshiVaqt();
+  else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(vaqt)) {
+    sana = new Date(Date.parse(`${vaqt}:00+05:00`));
+    if (sana.getTime() < Date.now() + 5 * 60_000) throw new Error("Vaqt kamida 5 daqiqa keyin bo'lsin");
+  }
+  const caption = captionAjrat(n);
+  const p = await zPost({ matn: caption, mediaUrl: url, mediaTur: tur, vaqt: sana });
+  const k = await kanal();
+  const qoshimcha: Record<string, unknown> = { zernio_post_id: p.id, zernio_media: url, joylash_vaqt: sana ? sana.toISOString() : new Date().toISOString(), caption };
+  if (k) qoshimcha.kanal_kutilmoqda = true;
+  if (p.havola) qoshimcha.havola = p.havola;
+  await q(`update agent_vazifalar set holat = $2, natija = coalesce(natija,'{}'::jsonb) || $3::jsonb, updated_at = now() where id = $1`,
+    [id, sana ? "rejalandi" : "joylandi", JSON.stringify(qoshimcha)]);
+  let kanalHavola: string | null = null;
+  if (k && !sana) { kanalHavola = (await kanalgaJoyla(id, caption).catch(() => ({ havola: null }))).havola; await q(`update agent_vazifalar set natija = natija - 'kanal_kutilmoqda' where id = $1`, [id]); }
+  const vaqtMatn = sana ? new Date(sana.getTime() + 5 * 3600e3).toISOString().replace("T", " ").slice(0, 16) : null;
+  await yubor(egasi(), [
+    sana ? `🗓 <b>#${id} rejalandi</b> — ${vaqtMatn} (Toshkent)` : `🚀 <b>#${id} Instagram'ga joylanmoqda</b>`,
+    `<i>${esc(String(v.buyruq).slice(0, 80))}</i>`,
+    p.havola ? `🔗 ${p.havola}` : sana ? "Vaqti kelganda o‘zi chiqadi. Ilovada bekor qilish mumkin." : "Instagram videoni 1–2 daqiqada qayta ishlaydi, havola ilovada paydo bo‘ladi.",
+    k ? (kanalHavola ? `📢 Kanal: ${kanalHavola}` : sana ? `📢 ${esc(k.nom)} kanaliga ham shu vaqtda (keyingi tekshiruvda) chiqadi` : "") : "",
+  ].filter(Boolean).join("\n"));
+  await panelYangila();
+  return { ok: true, rejalandi: Boolean(sana), vaqt: sana?.toISOString() ?? null, havola: p.havola };
+}
+
+// Har soatlik GET: vaqti kelgan rejalangan postlarni yakunlash (havola + Telegram kanal)
+export async function rejalanganlarniYakunla() {
+  if (!zernioBor()) return;
+  const rows = await q(`select id, natija from agent_vazifalar
+    where holat in ('rejalandi','joylandi') and natija ? 'zernio_post_id'
+      and (natija->>'joylash_vaqt')::timestamptz < now() - interval '2 minutes'
+      and (natija->>'havola' is null or natija ? 'kanal_kutilmoqda') limit 5`);
+  for (const r of rows) {
+    const havola = r.natija.havola ?? await postHavolasi(r.natija.zernio_post_id);
+    if (r.natija.kanal_kutilmoqda) {
+      await kanalgaJoyla(r.id, r.natija.caption).catch(() => null);
+      await q(`update agent_vazifalar set natija = natija - 'kanal_kutilmoqda' where id = $1`, [r.id]);
+    }
+    if (havola) await q(`update agent_vazifalar set holat = 'joylandi', natija = natija || jsonb_build_object('havola', $2::text), updated_at = now() where id = $1`, [r.id, havola]);
+  }
 }

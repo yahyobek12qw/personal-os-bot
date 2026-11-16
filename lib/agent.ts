@@ -5,6 +5,8 @@
 //   ❌ Yo'q → rad
 
 import { q } from "./db";
+import { serverdaJoyla, mediaBor, rejalanganlarniYakunla } from "./agent2";
+import { zernioBor } from "./zernio";
 import { tg, yubor, javob, esc, ILOVA_URL, type Klaviatura } from "./telegram";
 
 export const HOLAT_BELGI: Record<string, string> = {
@@ -12,6 +14,7 @@ export const HOLAT_BELGI: Record<string, string> = {
   ishlanmoqda: "⚙️ Ishlanmoqda",
   tasdiq: "👀 Tasdiq kutmoqda",
   tasdiqlandi: "✅ Tasdiqlandi, joylanadi",
+  rejalandi: "🗓 Rejalandi",
   bajarildi: "✔️ Bajarildi",
   joylandi: "🚀 Joylandi",
   rad: "❌ Rad etildi",
@@ -213,9 +216,13 @@ export async function navbatXabari(): Promise<{ text: string; kb: Klaviatura }> 
   return { text: t.join("\n"), kb: [[{ text: "🔄 Yangilash", callback_data: "ag:ls" }]] };
 }
 
-const tasdiqTugmalari = (id: number): Klaviatura => [
+const tasdiqTugmalari = (id: number, media = false): Klaviatura => media ? [
+  [{ text: "🚀 Hozir joylash", callback_data: `ag:ha:${id}` }, { text: "🕐 Eng yaxshi vaqtda", callback_data: `ag:hv:${id}` }],
+  [{ text: "⏰ Vaqt tanlash", web_app: { url: `${ILOVA_URL}#agent` } }, { text: "✏️ O'zgartir", callback_data: `ag:oz:${id}` }],
+  [{ text: "❌ Yo'q", callback_data: `ag:yoq:${id}` }],
+] : [
   [
-    { text: "✅ Ha, joylansin", callback_data: `ag:ha:${id}` },
+    { text: "✅ Ha", callback_data: `ag:ha:${id}` },
     { text: "✏️ O'zgartir", callback_data: `ag:oz:${id}` },
   ],
   [{ text: "❌ Yo'q", callback_data: `ag:yoq:${id}` }],
@@ -278,11 +285,17 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
 }
 
 // Tasdiq qarori — bot tugmasi va Mini App bir xil funksiyani ishlatadi
-export async function qaror(id: number, amal: "ha" | "hv" | "yoq" | "oz", izoh?: string) {
+export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz", izoh?: string, vaqt?: string) {
   await jadvalTayyorla();
   const v = (await q(`select id, holat, buyruq, loyiha, tur, natija, tg_msg from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("Vazifa topilmadi");
   if (v.holat !== "tasdiq") throw new Error(`Holati: ${HOLAT_BELGI[v.holat] ?? v.holat}`);
+  // Media tayyor va Zernio kaliti bor — server darhol joylaydi yoki rejalaydi
+  if ((amal === "ha" || amal === "hv" || amal === "vq") && v.tur !== "izoh" && mediaBor(v.natija) && zernioBor()) {
+    if (v.tg_msg) await tg("editMessageReplyMarkup", { chat_id: egasi(), message_id: v.tg_msg, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    return serverdaJoyla(id, amal === "hv" ? "eng_yaxshi" : amal === "vq" ? String(vaqt || "") : "hozir");
+  }
+  if (amal === "vq") throw new Error("Vaqt tanlash uchun Zernio API kaliti kerak");
   const bosh = `<b>#${id}</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
   let matn = "";
   let yangiId: number | null = null;
@@ -362,6 +375,9 @@ const egasi = () => String(process.env.ALLOWED_CHAT_ID);
 export async function apiNavbat() {
   await jadvalTayyorla();
   await kunlikYarat();
+  await yurakUrdi();
+  await rejalanganlarniYakunla().catch((e) => console.error("rejalangan", e));
+  await tiqilganlarniOgohlantir().catch((e) => console.error("ogoh", e));
   // 2 soatdan ortiq "ishlanmoqda"da qolganlarini qayta navbatga qaytaramiz
   await q(`update agent_vazifalar set holat = 'navbatda', updated_at = now()
            where holat = 'ishlanmoqda' and updated_at < now() - interval '2 hours'`);
@@ -373,6 +389,40 @@ export async function apiNavbat() {
      order by case v.tur when 'hisobot' then 0 when 'tahlil' then 1 else 2 end, v.id`,
   );
 }
+// ---------- Faollik: dispetcher har GET'da "yurak urishi"ni yozadi ----------
+async function yurakUrdi() {
+  const kun = new Date(Date.now() + TASHKENT_MS).toISOString().slice(0, 10);
+  await q(`insert into agent_sozlama (kalit, qiymat) values ('yurak', jsonb_build_object('oxirgi', now(), 'kun', $1::text, 'soni', 1))
+           on conflict (kalit) do update set qiymat = jsonb_build_object('oxirgi', now(), 'kun', $1::text,
+             'soni', case when agent_sozlama.qiymat->>'kun' = $1 then coalesce((agent_sozlama.qiymat->>'soni')::int, 0) + 1 else 1 end)`, [kun]);
+}
+// 90 daqiqadan ortiq navbatda qolgan og'ir ish — ishchi ishga tushmagan (ko'pincha Claude limiti)
+async function tiqilganlarniOgohlantir() {
+  const rows = await q(`select id, tur, buyruq from agent_vazifalar
+    where holat = 'navbatda' and tur in ('kunlik','video','kontent','tahlil')
+      and created_at < now() - interval '90 minutes' and not (coalesce(natija,'{}'::jsonb) ? 'ogohlantirildi') limit 3`);
+  for (const r of rows) {
+    await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || '{"ogohlantirildi":true}'::jsonb where id = $1`, [r.id]);
+    await yubor(egasi(), `⚠️ <b>#${r.id} 1.5 soatdan beri olinmadi</b>\n<i>${esc(String(r.buyruq).slice(0, 80))}</i>\n\n${r.tur === "kunlik" || r.tur === "video" ? "Opus" : "Sonnet"} ishchisi ishga tushmadi. Ko‘pincha sabab — Claude limiti tugagan. Limit tiklanganda agent o‘zi davom etadi. Aniq limit: Claude → Settings → Usage.`);
+  }
+}
+export async function faollik() {
+  await jadvalTayyorla();
+  const yurak = (await q(`select qiymat from agent_sozlama where kalit = 'yurak'`))[0]?.qiymat ?? null;
+  const bugun = await q(`select coalesce(model,'—') model, count(*)::int soni,
+      coalesce(sum(extract(epoch from (updated_at - boshlangan)) / 60) filter (where boshlangan is not null and holat <> 'ishlanmoqda'), 0)::int daqiqa
+    from agent_vazifalar where boshlangan > (now() at time zone 'Asia/Tashkent')::date at time zone 'Asia/Tashkent' group by 1 order by 2 desc`);
+  const hafta = await q(`select coalesce(model,'—') model, count(*)::int soni from agent_vazifalar where boshlangan > now() - interval '7 days' group by 1`);
+  const tiqilgan = (await q(`select count(*)::int n from agent_vazifalar where holat = 'navbatda' and created_at < now() - interval '90 minutes' and tur in ('kunlik','video','kontent','tahlil')`))[0].n;
+  const xato = (await q(`select count(*)::int n from agent_vazifalar where holat = 'xato' and updated_at > now() - interval '24 hours'`))[0].n;
+  const t = new Date(Date.now() + TASHKENT_MS); const soat = t.getUTCHours() + t.getUTCMinutes() / 60;
+  const faolVaqt = soat >= 6.75 && soat <= 23;
+  const oxirgi = yurak?.oxirgi ? Date.parse(yurak.oxirgi) : 0;
+  const daqOldin = oxirgi ? Math.round((Date.now() - oxirgi) / 60000) : null;
+  const holat = tiqilgan ? "limit" : faolVaqt && (daqOldin == null || daqOldin > 75) ? "jim" : "yaxshi";
+  return { yurak, daqOldin, bugun, hafta, tiqilgan, xato, holat };
+}
+
 // Agent uchun kontekst: oxirgi ishlar (takrorlamaslik) va oxirgi hisobot (solishtirish)
 export async function apiKontekst() {
   const tarix = await q(
@@ -487,6 +537,8 @@ export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
   const jami = navbat.reduce((a, r) => a + (r.taxmin_daq ?? taxminiyVaqt(r.buyruq)), 0);
   if (navbat.length) t.push("", `🧮 Navbatdagi ish jami: ~${davomiylik(jami)}`);
   t.push("", (await kunlikHolati()) ? "📅 Kunlik rejim: <b>yoqilgan</b> (hisobot + 1 video)" : "📅 Kunlik rejim: o'chirilgan");
+  const yr = (await q(`select qiymat from agent_sozlama where kalit = 'yurak'`))[0]?.qiymat;
+  if (yr?.oxirgi) t.push(`💓 Oxirgi tekshiruv: ${hhmm(Date.parse(yr.oxirgi))} · bugun ${yr.soni ?? 0} marta`);
   t.push("", `<i>Yangilandi ${hhmm(Date.now())}</i>`);
   return { text: t.join("\n"), kb: [
     [{ text: "➕ Yangi vazifa", callback_data: "ag:new" }, { text: "🔄 Yangilash", callback_data: "ag:pn" }],
@@ -595,7 +647,7 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string };
+type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string };
 
 export async function apiNatija(id: number, n: Natija) {
   const v = (await q(`select id, buyruq, izohlar, tur from agent_vazifalar where id = $1`, [id]))[0];
@@ -617,7 +669,7 @@ export async function apiNatija(id: number, n: Natija) {
   const sarlavha = `🤖 <b>#${id} tayyor</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
   const tana = esc(n.matn ?? "");
   const izoh = n.izoh ? `\n\n💬 <i>${esc(n.izoh)}</i>` : "";
-  const kb = tasdiqTugmalari(id);
+  const kb = tasdiqTugmalari(id, Boolean(n.media_url));
   let msgId: number;
   if (n.media_url) {
     const usul = n.media_tur === "video" ? "sendVideo" : n.media_tur === "fayl" ? "sendDocument" : "sendPhoto";

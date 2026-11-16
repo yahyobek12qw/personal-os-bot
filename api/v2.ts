@@ -7,7 +7,9 @@ import { sttBor, transkripsiya } from "../lib/stt";
 import { yubor } from "../lib/telegram";
 import { qisqa } from "../lib/ids";
 import { q } from "../lib/db";
-import { ilovaMalumoti, ilovadanQosh, qaror, kunlikYoq } from "../lib/agent";
+import { ilovaMalumoti, ilovadanQosh, qaror, kunlikYoq, faollik, navbatgaQosh, panelYangila } from "../lib/agent";
+import { akkaunt, postOchir, zernioBor } from "../lib/zernio";
+import { kanal } from "../lib/agent2";
 
 type Amal = (b: any) => Promise<unknown>;
 const ID = (b: any) => { const id = String(b.id || ""); if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Noto'g'ri ID"); return id; };
@@ -35,10 +37,28 @@ const AMALLAR: Record<string, Amal> = {
   agent: () => ilovaMalumoti(),
   agentQosh: (b) => ilovadanQosh(String(b.matn || "")),
   agentKunlik: (b) => kunlikYoq(Boolean(b.yoqilgan)),
+  agentAkkaunt: (b) => akkaunt(Boolean(b.yangila)),
+  agentRejaBekor: (b) => postOchir(String(b.postId || "")),
+  async agentHolat() { return { ...(await faollik()), zernio: zernioBor(), kanal: await kanal() }; },
+  async agentResearch(b) {
+    const PRESET: Record<string, string> = {
+      trend: "Tahlil: Instagram Reels trendlari — tikuvxona, ishlab chiqarish va kichik biznes nishasida shu hafta nima ishlayapti: formatlar, hooklar, musiqa, davomiylik",
+      raqobat: "Tahlil: raqobatchilar — O‘zbekiston va MDHda tikuvxona va ishlab chiqarish uchun hisob dasturlari: kontenti, takliflari, narxlari, kuchli va zaif tomonlari",
+      videolar: "Tahlil: bizning videolarimiz natijasi (Zernio analytics) — ko‘rishlar, o‘rtacha tomosha, skip rate, saves/sends; qaysi biri nega yaxshi yoki yomon; keyingi 3 video uchun xulosa",
+      ilova: "Tahlil: product CRM ilovasini yaxshilash — tikuvxona egalarining og‘riqlari, raqobatchilardagi funksiyalar, foydalanuvchi sharhlari; ustuvor 5 ta yaxshilash va ularni kontentda ko‘rsatish g‘oyalari",
+      auditoriya: "Tahlil: auditoriya — tikuvxona egalari va buxgalterlar Instagram va Telegramda qayerda, nimani o‘qiydi, qanday savollar beradi; 10 ta kontent mavzusi",
+      goya: "Kontent: 10 ta Reels g‘oyasi — kontent-strategiya ustunlari bo‘yicha, har biriga hook va nega ishlashi",
+    };
+    const matn = b.preset ? PRESET[String(b.preset)] : String(b.matn || "").trim();
+    if (!matn) throw new Error("Research mavzusini yozing");
+    const v = await navbatgaQosh(matn, /^Kontent:/.test(matn) ? "kontent" : "tahlil");
+    await panelYangila();
+    return v;
+  },
   agentQaror: (b) => {
     const amal = String(b.amal);
-    if (!["ha", "hv", "yoq", "oz"].includes(amal)) throw new Error("Noto'g'ri amal");
-    return qaror(Number(b.id), amal as any, b.izoh ? String(b.izoh) : undefined);
+    if (!["ha", "hv", "vq", "yoq", "oz"].includes(amal)) throw new Error("Noto'g'ri amal");
+    return qaror(Number(b.id), amal as any, b.izoh ? String(b.izoh) : undefined, b.vaqt ? String(b.vaqt) : undefined);
   },
   async biriktir(b) {
     const id = ID(b);
