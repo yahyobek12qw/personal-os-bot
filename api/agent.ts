@@ -2,6 +2,18 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
+import { rasmYasa } from "../lib/rasm";
+
+// Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
+const AGENT_BUYRUQLAR = [
+  { command: "agent", description: "🤖 Agent paneli: nima qilyapti, navbat" },
+  { command: "kontent", description: "✍️ Agentga kontent/ssenariy vazifasi" },
+  { command: "rasmpost", description: "🖼 Rasmli post (karusel) tayyorlash" },
+  { command: "tahlil", description: "🔎 Research va tahlil" },
+  { command: "kunlik", description: "📅 Kunlik rejim: hisobot + 1 video" },
+  { command: "post", description: "📤 O‘z rasm/videoingizni joylash" },
+  { command: "kanal", description: "📢 Telegram kanal holati" },
+];
 import { jadvalTayyorla, apiKontekst, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
 // Rejali Claude shu API orqali navbatni o'qiydi va natija yuboradi.
@@ -23,6 +35,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("X-Jami", String(f.jami)); res.setHeader("X-Bo", String(f.bo)); res.setHeader("X-Oxir", String(f.oxir)); res.setHeader("X-Nom", f.nom ?? "fayl");
       return res.status(200).send(f.data);
+    }
+    if (req.method === "GET" && req.query.buyruqlar) {
+      // Bot menyusi: mavjud buyruqlarni o'qiydi; "yangila" bo'lsa agent buyruqlarini qo'shadi
+      const bor: { command: string; description: string }[] = await tg("getMyCommands", {});
+      if (req.query.buyruqlar !== "yangila") return res.status(200).json({ buyruqlar: bor });
+      const nomlar = new Set(bor.map((b) => b.command));
+      const yangi = [...bor.map((b) => AGENT_BUYRUQLAR.find((a) => a.command === b.command) ?? b), ...AGENT_BUYRUQLAR.filter((a) => !nomlar.has(a.command))];
+      await tg("setMyCommands", { commands: yangi.slice(0, 100) });
+      return res.status(200).json({ buyruqlar: yangi });
     }
     if (req.method === "GET" && req.query.webhook) {
       // Diagnostika: webhook kanal postlarini (channel_post) qabul qiladimi; kerak bo'lsa tuzatadi
@@ -52,6 +73,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "yangi":
         if (!b.buyruq) return res.status(400).json({ xato: "buyruq kerak" });
         return res.status(200).json(await apiYangi(b));
+      case "rasm": {
+        // Cloudflare FLUX: fon/illyustratsiya rasmi (JPEG base64). Matn rasmga yozilmaydi — HTML'da qo'yiladi
+        const r = await rasmYasa(String(b.prompt ?? ""), b.qadam ? Number(b.qadam) : undefined);
+        return res.status(200).json(r);
+      }
       case "kanal":
         return res.status(200).json(await kanalgaJoyla(id, b.matn ? String(b.matn) : undefined));
       case "taklif":
