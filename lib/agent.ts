@@ -1,3 +1,4 @@
+import { igHavola, tgHavola } from "./havolalar";
 // Kontent agenti: Telegram navbati + rejali Claude.
 // Oqim: /kontent → navbatda → (Claude oladi) ishlanmoqda → natija → tasdiq
 //   ✅ Ha → tasdiqlandi → (Claude joylaydi) joylandi
@@ -709,6 +710,9 @@ function ikkiMatn(n: Natija) {
   return qism.length ? "\n\n" + qism.join("\n\n") : "";
 }
 export async function apiNatija(id: number, n: Natija) {
+  // Murojaat havolalari: dispetcher Zernio orqali joylasa ham caption'da bo'lsin
+  if (n.caption) n.caption = igHavola(n.caption);
+  if (n.tg_matn) n.tg_matn = tgHavola(n.tg_matn);
   const v = (await q(`select id, buyruq, izohlar, tur from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
   if (v.tur === "hisobot" || v.tur === "tahlil") {

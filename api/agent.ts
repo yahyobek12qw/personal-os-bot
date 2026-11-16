@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
+import { tgHavola } from "../lib/havolalar";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
 import { savolEslatma, guruh, faqBirlashtir, testYoq } from "../lib/guruh";
@@ -89,6 +90,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ faq: await faqBirlashtir(b.faq ?? {}) });
       case "guruh_test":
         return res.status(200).json(await testYoq(Number(b.daqiqa ?? 60)));
+      case "kanal_tahrir": {
+        // Kanaldagi bot postining matnini/caption'ini almashtirish (havolalar bilan)
+        const k = (await q(`select qiymat from agent_sozlama where kalit = 'tg_kanal'`))[0]?.qiymat;
+        if (!k) return res.status(400).json({ xato: "kanal ulanmagan" });
+        const matn = tgHavola(String(b.matn ?? ""));
+        const usul = b.media ? "editMessageCaption" : "editMessageText";
+        await tg(usul, { chat_id: k.id, message_id: Number(b.message_id), ...(b.media ? { caption: matn.slice(0, 1024) } : { text: matn.slice(0, 4096) }), link_preview_options: { is_disabled: true } });
+        return res.status(200).json({ ok: true, uzunlik: matn.length });
+      }
       case "kanal_ochir": {
         // Ulangan kanaldagi bot postini o'chirish (xato joylangan post uchun)
         const k = (await q(`select qiymat from agent_sozlama where kalit = 'tg_kanal'`))[0]?.qiymat;

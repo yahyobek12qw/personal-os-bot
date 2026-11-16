@@ -1,3 +1,4 @@
+import { igHavola, tgHavola } from "./havolalar";
 // Agent: o'z postingizni joylash, Telegram kanal, izohlarga javob, Telegram fayllarini agentga uzatish.
 
 import { q } from "./db";
@@ -47,7 +48,7 @@ export async function kanalgaJoyla(id: number, matnUstidan?: string) {
   if (!v) throw new Error("vazifa topilmadi");
   const n = v.natija ?? {};
   // Telegram uchun alohida matn bo'lsa — o'sha (heshtegsiz, havola bilan), bo'lmasa Instagram caption
-  const toliq = String(n.tg_matn ?? matnUstidan ?? n.caption ?? n.matn ?? "").slice(0, 4000);
+  const toliq = tgHavola(String(n.tg_matn ?? matnUstidan ?? n.caption ?? n.matn ?? "")).slice(0, 4000);
   const sigadi = toliq.length <= 1000;
   const caption = sigadi ? toliq : undefined;
   const manba = n.tg_file_id || n.media_url;
@@ -72,7 +73,7 @@ export async function postYarat(m: any, media: { fileId: string; tur: string; si
   await jadvalTayyorla();
   if (!["rasm", "video"].includes(media.tur)) return yubor(m.chat.id, "Instagram uchun rasm yoki video kerak.", undefined, m.message_id);
   if ((media.size ?? 0) > 20 * 1024 * 1024) return yubor(m.chat.id, "Fayl 20 MB dan katta — bot uni yuklab ololmaydi. Siqib qayta yuboring.", undefined, m.message_id);
-  const natija = { matn: caption, caption, tg_file_id: media.fileId, media_tur: media.tur, hajm: media.size ?? null, manba: "egasi" };
+  const natija = { matn: caption, caption: igHavola(caption), tg_matn: tgHavola(caption), tg_file_id: media.fileId, media_tur: media.tur, hajm: media.size ?? null, manba: "egasi" };
   const r = (await q(
     `insert into agent_vazifalar (loyiha, tur, buyruq, holat, natija, taxmin_daq) values ('productcrm', 'post', $1, 'tasdiq', $2::jsonb, 5) returning id`,
     [`Post: ${caption.split("\n")[0].slice(0, 60) || (media.tur === "video" ? "video" : "rasm")}`, JSON.stringify(natija)],
@@ -182,7 +183,7 @@ export async function serverdaJoyla(id: number, vaqt: string) {
     sana = new Date(Date.parse(`${vaqt}:00+05:00`));
     if (sana.getTime() < Date.now() + 5 * 60_000) throw new Error("Vaqt kamida 5 daqiqa keyin bo'lsin");
   }
-  const caption = captionAjrat(n);
+  const caption = igHavola(captionAjrat(n));
   const p = await zPost({ matn: caption, mediaUrl: url, mediaUrls: rasmlar.length > 1 ? rasmlar : undefined, mediaTur: rasmlar.length ? "image" : tur, vaqt: sana });
   const k = await kanal();
   const qoshimcha: Record<string, unknown> = { zernio_post_id: p.id, zernio_media: url, joylash_vaqt: sana ? sana.toISOString() : new Date().toISOString(), caption };
