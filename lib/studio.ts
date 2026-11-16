@@ -1,5 +1,6 @@
-// Kontent Studio: cheksiz doska. Bitta video = bitta loyiha, har bir bosqich = tugun.
+// Studiya: kontent ishlab chiqaruvchi studiya. Bitta video = bitta loyiha (cheksiz doska), har bir bosqich = tugun.
 // Oqim: ssenariy → ovoz → referenslar (qahramon, joy, uslub) → demo sahnalar → yakuniy video → reliz.
+// Kutubxona (qahramonlar, ovozlar, uslublar, joylar) — loyihalar orasida qayta ishlatiladi.
 // Agent faqat "navbatda" va "qayta" tugunlarni ishlaydi; tasdiqlash — faqat egasi.
 
 import { q } from "./db";
@@ -7,6 +8,16 @@ import { jadvalTayyorla, qaror, panelYangila, keyingiTekshiruv, bugunTosh } from
 import { tg, yubor, esc } from "./telegram";
 import { studioHavola } from "./auth";
 import { igHavola, tgHavola } from "./havolalar";
+import { arxivgaMedia, type Bolim } from "./arxiv";
+import { proksi } from "./media";
+
+const BAZA_URL = "https://personal-os-bot-gold.vercel.app";
+// Kutubxona fayllari (ovoz namunasi, qahramon rasmi) Telegram arxivida turadi; o'qishda imzolangan havola beriladi
+function fayllarniOch(mazmun: any, toliq = false) {
+  const fs: any[] = Array.isArray(mazmun?.fayllar) ? mazmun.fayllar : [];
+  if (!fs.length) return mazmun;
+  return { ...mazmun, fayllar: fs.map((x) => (x?.f ? { ...x, url: (toliq ? BAZA_URL : "") + proksi(String(x.f)) } : x)) };
+}
 
 export const HOLATLAR = ["kutmoqda", "navbatda", "ishlamoqda", "tekshiruvda", "tasdiqlandi", "qayta", "eskirgan", "xato"] as const;
 type Holat = (typeof HOLATLAR)[number];
@@ -52,6 +63,20 @@ export async function studioTayyorla() {
     unique (loyiha_id, kalit)
   )`);
   await q(`create index if not exists st_loyiha on studio_tugun (loyiha_id)`);
+  await q(`alter table studio_loyiha
+    add column if not exists reklama text,
+    add column if not exists qahramon_id int,
+    add column if not exists format text`);
+  await q(`create table if not exists studio_kutubxona (
+    id serial primary key,
+    tur text not null,
+    nom text not null,
+    mazmun jsonb not null default '{}'::jsonb,
+    rasm text,
+    holat text not null default 'faol',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`);
   tayyor = true;
 }
 
@@ -76,16 +101,25 @@ async function jurnalga(loyihaId: number, matn: string, kim: "agent" | "siz" | "
   );
 }
 
-export async function yangiLoyiha(mavzu: string, nom?: string, loyiha = "productcrm") {
+export const REKLAMALAR: Record<string, string> = { eduflow: "EduFlow", productcrm: "product CRM", kurs: "Kontent kurslari" };
+export const FORMATLAR: Record<string, string> = { hikoya: "Hikoya", komediya: "Kulgili sahna", muammo: "Ijtimoiy muammo", seriya: "Seriya qismi", sahna_ortidan: "Sahna ortidan" };
+export type YangiOpts = { reklama?: string; qahramon?: number | null; format?: string; variantlar?: number };
+
+export async function yangiLoyiha(mavzu: string, nom?: string, opts: YangiOpts = {}) {
   await studioTayyorla();
   const m = String(mavzu || "").trim();
   if (m.length < 3) throw new Error("Mavzuni yozing");
   const n = (String(nom || "").trim() || m).slice(0, 80);
-  const l = (await q(`insert into studio_loyiha (nom, mavzu, loyiha, jurnal) values ($1, $2, $3, $4::jsonb) returning id`,
-    [n, m.slice(0, 2000), loyiha, JSON.stringify([jurnalQator("Loyiha ochildi", "siz")])]))[0];
+  const reklama = opts.reklama && REKLAMALAR[opts.reklama] ? opts.reklama : null;
+  const format = opts.format && FORMATLAR[opts.format] ? opts.format : null;
+  const qahramon = opts.qahramon ? Number(opts.qahramon) || null : null;
+  const l = (await q(`insert into studio_loyiha (nom, mavzu, loyiha, jurnal, reklama, format, qahramon_id) values ($1, $2, 'studiya', $3::jsonb, $4, $5, $6) returning id`,
+    [n, m.slice(0, 2000), JSON.stringify([jurnalQator("Loyiha ochildi", "siz")]), reklama, format, qahramon]))[0];
+  const soni = Math.max(1, Math.min(6, Number(opts.variantlar) || 3));
   for (const [i, t] of SHABLON.entries()) {
-    await q(`insert into studio_tugun (loyiha_id, kalit, tur, nom, holat, x, y, w, ota, tartib) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
-      [l.id, t.kalit, t.tur, t.nom, t.holat ?? "kutmoqda", t.x, t.y, t.w, JSON.stringify(t.ota), i]);
+    const mazmun = t.kalit === "ssenariy" && soni > 1 ? { _soni: soni } : {};
+    await q(`insert into studio_tugun (loyiha_id, kalit, tur, nom, holat, x, y, w, ota, tartib, mazmun) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb)`,
+      [l.id, t.kalit, t.tur, t.nom, t.holat ?? "kutmoqda", t.x, t.y, t.w, JSON.stringify(t.ota), i, JSON.stringify(mazmun)]);
   }
   await agentgaNavbat(l.id);
   return { id: l.id as number };
@@ -142,7 +176,7 @@ async function agentgaNavbat(loyihaId: number) {
     if (bor) { if (r.length) await panelYangila(); return; }
   }
   const v = (await q(`insert into agent_vazifalar (loyiha, tur, buyruq, taxmin_daq) values ($1, 'studio', $2, 20) returning id`,
-    [l.loyiha, `Studio #${l.id}: ${String(l.nom).slice(0, 70)}`]))[0];
+    [l.loyiha, `Studiya #${l.id}: ${String(l.nom).slice(0, 70)}`]))[0];
   await q(`update studio_loyiha set vazifa_id = $2 where id = $1`, [loyihaId, v.id]);
   await panelYangila();
 }
@@ -152,15 +186,15 @@ async function egasigaXabar(loyihaId: number) {
   try {
     const l = (await q(`select id, nom, tg_msg from studio_loyiha where id = $1`, [loyihaId]))[0];
     const kut = await q(`select nom from studio_tugun where loyiha_id = $1 and holat in ('tekshiruvda','eskirgan') order by tartib, id`, [loyihaId]);
-    const kb = [[{ text: "🎛 Studio'da ochish", url: studioHavola(loyihaId) }]];
+    const kb = [[{ text: "🎛 Studiyada ochish", url: studioHavola(loyihaId) }]];
     if (!kut.length) {
       if (l.tg_msg) {
-        await tg("editMessageText", { chat_id: egasi(), message_id: l.tg_msg, text: `✅ <b>Studio #${l.id}</b> · hammasi ko‘rildi`, parse_mode: "HTML", reply_markup: { inline_keyboard: kb } }).catch(() => {});
+        await tg("editMessageText", { chat_id: egasi(), message_id: l.tg_msg, text: `✅ <b>Studiya #${l.id}</b> · hammasi ko‘rildi`, parse_mode: "HTML", reply_markup: { inline_keyboard: kb } }).catch(() => {});
         await q(`update studio_loyiha set tg_msg = null where id = $1`, [loyihaId]);
       }
       return;
     }
-    const matn = `👀 <b>Studio #${l.id}</b> · ${esc(String(l.nom).slice(0, 60))}\nTekshiruvingiz kerak: ${kut.map((t: any) => esc(t.nom)).join(", ")}`;
+    const matn = `👀 <b>Studiya #${l.id}</b> · ${esc(String(l.nom).slice(0, 60))}\nTekshiruvingiz kerak: ${kut.map((t: any) => esc(t.nom)).join(", ")}`;
     if (l.tg_msg) {
       const ok = await tg("editMessageText", { chat_id: egasi(), message_id: l.tg_msg, text: matn, parse_mode: "HTML", reply_markup: { inline_keyboard: kb } }).then(() => true).catch(() => false);
       if (ok) return;
@@ -294,9 +328,9 @@ export async function relizQil(id: number, vaqt: "hozir" | "eng_yaxshi", caption
   const cap = igHavola(String(caption ?? t.mazmun?.caption ?? "").trim());
   const tgm = tgHavola(String(tgMatn ?? t.mazmun?.tg_matn ?? "").trim());
   if (!cap) throw new Error("Instagram matni bo‘sh");
-  const natija = { matn: `Studio #${l.id}: ${l.nom}`, media_url: video.mazmun.media_url, ...(video.mazmun.toliq_url ? { toliq_url: video.mazmun.toliq_url } : {}), media_tur: "video", caption: cap, tg_matn: tgm, studio: l.id };
+  const natija = { matn: `Studiya #${l.id}: ${l.nom}`, media_url: video.mazmun.media_url, ...(video.mazmun.toliq_url ? { toliq_url: video.mazmun.toliq_url } : {}), media_tur: "video", caption: cap, tg_matn: tgm, studio: l.id };
   const v = (await q(`insert into agent_vazifalar (loyiha, tur, buyruq, holat, natija, kun) values ($1, 'video', $2, 'tasdiq', $3::jsonb, $4::date) returning id`,
-    [l.loyiha, `Studio #${l.id}: ${String(l.nom).slice(0, 70)}`, JSON.stringify(natija), bugunTosh()]))[0];
+    [l.loyiha, `Studiya #${l.id}: ${String(l.nom).slice(0, 70)}`, JSON.stringify(natija), bugunTosh()]))[0];
   await q(`update studio_tugun set mazmun = mazmun || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify({ caption: cap, tg_matn: tgm, vazifa_id: v.id })]);
   const r = await qaror(v.id, vaqt === "eng_yaxshi" ? "hv" : "ha");
   await q(`update studio_tugun set holat = 'tasdiqlandi', updated_at = now() where id = $1`, [id]);
@@ -311,11 +345,143 @@ export async function arxivla(loyihaId: number, arxiv = true) {
   return { ok: true };
 }
 
+// ---------- Variantlar va versiyalar ----------
+// Agent bir tugun uchun bir nechta variant beradi: mazmun.variantlar = [{...}, ...]. Egasi bittasini tanlaydi.
+export async function variantTanla(id: number, i: number, tasdiq = false) {
+  const t = await tugunOl(id);
+  const vs: any[] = Array.isArray(t.mazmun?.variantlar) ? t.mazmun.variantlar : [];
+  if (!vs[i] || typeof vs[i] !== "object") throw new Error("Variant topilmadi");
+  if (!["tekshiruvda", "eskirgan"].includes(t.holat)) throw new Error("Variant faqat tekshiruvda tanlanadi");
+  const mazmun = { ...vs[i], variantlar: vs, tanlangan: i, _v: t.mazmun?._v ?? 1 };
+  await q(`update studio_tugun set mazmun = $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(mazmun)]);
+  await jurnalga(t.loyiha_id, `${t.nom}: ${i + 1}-variant tanlandi`, "siz");
+  if (tasdiq) return tasdiqla(id);
+  return { ok: true };
+}
+
+// "Yana N ta variant" — agent qayta ishlaydi va mazmun.variantlar qaytaradi
+export async function variantSora(id: number, soni: number, izoh = "") {
+  const t = await tugunOl(id);
+  const n = Math.max(2, Math.min(6, Number(soni) || 3));
+  if (["kutmoqda", "ishlamoqda"].includes(t.holat)) throw new Error("Bu tugun hozir ishlanmaydi");
+  const matn = `${n} ta har xil variant kerak — men tanlayman.${izoh ? " " + String(izoh).trim() : ""}`;
+  await q(`update studio_tugun set mazmun = mazmun || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify({ _soni: n })]);
+  return qaytaQil(id, matn, false);
+}
+
+// Oldingi versiyani qaytarish: joriy mazmun versiyalarga o'tadi, tanlangan versiya — tekshiruvga
+export async function versiyaQaytar(id: number, i: number) {
+  const t = await tugunOl(id);
+  const vs: any[] = Array.isArray(t.versiyalar) ? t.versiyalar : [];
+  const v = vs[i];
+  if (!v?.mazmun) throw new Error("Versiya topilmadi");
+  if (["kutmoqda", "navbatda", "ishlamoqda"].includes(t.holat)) throw new Error("Bu tugun hozir band");
+  const yangiVs = vs.filter((_, k) => k !== i).concat([{ mazmun: t.mazmun, vaqt: new Date().toISOString() }]);
+  const mazmun = { ...v.mazmun, _v: Number(t.mazmun?._v || 0) + 1 };
+  if (t.holat === "tasdiqlandi") {
+    await qaytaQil(id, `v${v.mazmun._v ?? i + 1} versiyasiga qaytarildi`, false);
+  }
+  await q(`update studio_tugun set holat = 'tekshiruvda', mazmun = $2::jsonb, versiyalar = $3::jsonb, updated_at = now() where id = $1`,
+    [id, JSON.stringify(mazmun), JSON.stringify(yangiVs)]);
+  await jurnalga(t.loyiha_id, `${t.nom}: v${v.mazmun._v ?? i + 1} qaytarildi`, "siz");
+  await egasigaXabar(t.loyiha_id);
+  return { ok: true };
+}
+
+// ---------- Kutubxona: qahramonlar, ovozlar, uslublar, joylar ----------
+export const KUTUBXONA_TURLARI = ["qahramon", "ovoz", "uslub", "joy", "manba"] as const;
+const kTur = (t: unknown) => {
+  const x = String(t || "");
+  if (!(KUTUBXONA_TURLARI as readonly string[]).includes(x)) throw new Error("tur: qahramon | ovoz | uslub | joy | manba");
+  return x;
+};
+export async function kutubxona(tur?: string) {
+  await studioTayyorla();
+  const r = await q(`select id, tur, nom, mazmun, rasm, holat, updated_at from studio_kutubxona
+                        where holat <> 'ochirildi' and ($1::text is null or tur = $1) order by tur, updated_at desc limit 200`, [tur ? kTur(tur) : null]);
+  return { kutubxona: r.map((k: any) => ({ ...k, mazmun: fayllarniOch(k.mazmun) })) };
+}
+
+// Fayl yuklash (ovoz namunasi, qahramon rasmi): base64, ≤3.5 MB → Telegram arxivi → kutubxona elementiga biriktiriladi
+export async function yukla(b: any) {
+  const id = Number(b.id);
+  const k = (await q(`select id, tur, nom, mazmun from studio_kutubxona where id = $1`, [id]))[0];
+  if (!k) throw new Error("Avval kutubxona elementini saqlang");
+  const mime = String(b.mime || "application/octet-stream");
+  const buf = Buffer.from(String(b.b64 || ""), "base64");
+  if (!buf.length) throw new Error("Fayl bo‘sh");
+  if (buf.length > 3.5 * 1024 * 1024) throw new Error("Fayl 3.5 MB dan katta — qisqaroq yozuv yuboring");
+  const bolim: Bolim = mime.startsWith("image/") ? "rasm" : mime.startsWith("video/") ? "video" : mime.startsWith("audio/") ? "ovoz" : "hujjat";
+  const nom = String(b.nom || "fayl").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+  // Rasm hujjat sifatida yuboriladi — Telegram siqmasin
+  const f = await arxivgaMedia(new Blob([buf], { type: mime }), nom, bolim === "rasm" ? "hujjat" : bolim, `🎛 Studiya kutubxonasi · ${k.tur} · ${k.nom}`);
+  if (!f?.f) throw new Error("Fayllar guruhi (FILES_CHAT_ID) sozlanmagan");
+  const yozuv = { f: f.f, nom, tur: bolim, hajm: buf.length, vaqt: new Date().toISOString() };
+  await q(`update studio_kutubxona set mazmun = jsonb_set(mazmun, '{fayllar}', coalesce(mazmun->'fayllar','[]'::jsonb) || $2::jsonb), updated_at = now() where id = $1`,
+    [id, JSON.stringify([yozuv])]);
+  return { ok: true, url: proksi(f.f) };
+}
+export async function kutubxonaSaqla(b: any, kim: "siz" | "agent" = "siz") {
+  await studioTayyorla();
+  const nom = String(b.nom || "").trim().slice(0, 80);
+  const mazmun = b.mazmun && typeof b.mazmun === "object" ? b.mazmun : {};
+  const rasm = b.rasm ? String(b.rasm).slice(0, 1000) : null;
+  if (b.id) {
+    const r = await q(`update studio_kutubxona set nom = coalesce(nullif($2,''), nom), mazmun = mazmun || $3::jsonb, rasm = coalesce($4, rasm),
+                        holat = coalesce($5, holat), updated_at = now() where id = $1 returning id`,
+      [Number(b.id), nom, JSON.stringify(mazmun), rasm, b.holat ? String(b.holat).slice(0, 20) : null]);
+    if (!r.length) throw new Error("Kutubxonada topilmadi");
+    return { id: r[0].id, kim };
+  }
+  if (!nom) throw new Error("Nomini yozing");
+  const r = await q(`insert into studio_kutubxona (tur, nom, mazmun, rasm, holat) values ($1,$2,$3::jsonb,$4,$5) returning id`,
+    [kTur(b.tur), nom, JSON.stringify(mazmun), rasm, b.holat ? String(b.holat).slice(0, 20) : kim === "siz" && b.tur === "ovoz" ? "navbatda" : "faol"]);
+  return { id: r[0].id, kim };
+}
+export async function kutubxonaOchir(id: number) {
+  await q(`update studio_kutubxona set holat = 'ochirildi', updated_at = now() where id = $1`, [id]);
+  return { ok: true };
+}
+// Kutubxonadagi ish agentga: masalan, yangi klon ovoz namunasini tayyorlash
+export async function kutubxonaIshi(id: number, matn: string) {
+  const k = (await q(`select id, tur, nom from studio_kutubxona where id = $1`, [id]))[0];
+  if (!k) throw new Error("Kutubxonada topilmadi");
+  await q(`update studio_kutubxona set holat = 'navbatda', mazmun = mazmun || $2::jsonb, updated_at = now() where id = $1`,
+    [id, JSON.stringify({ _buyruq: String(matn || "").slice(0, 1000), _vaqt: new Date().toISOString() })]);
+  const bor = (await q(`select id from agent_vazifalar where tur = 'studio' and buyruq like $1 and holat in ('navbatda','ishlanmoqda')`, [`Kutubxona #${id}:%`]))[0];
+  if (!bor) await q(`insert into agent_vazifalar (loyiha, tur, buyruq, taxmin_daq) values ('studiya', 'studio', $1, 15)`, [`Kutubxona #${id}: ${k.tur} · ${String(k.nom).slice(0, 60)}`]);
+  await panelYangila();
+  return { ok: true };
+}
+
+// ---------- Telefon: faqat agent — tasdiq kutayotgan hamma narsa bitta lentada ----------
+export async function kutish() {
+  await studioTayyorla();
+  const tugunlarK = await q(`select t.id, t.kalit, t.tur, t.nom, t.holat, t.mazmun, t.foiz, t.bosqich, t.updated_at, t.versiyalar,
+        l.id loyiha_id, l.nom loyiha_nom
+      from studio_tugun t join studio_loyiha l on l.id = t.loyiha_id
+      where l.holat = 'faol' and t.tur <> 'izoh' and t.holat in ('tekshiruvda','eskirgan','xato')
+      order by t.updated_at desc limit 40`);
+  const jarayon = await q(`select t.id, t.nom, t.holat, t.foiz, t.bosqich, l.id loyiha_id, l.nom loyiha_nom
+      from studio_tugun t join studio_loyiha l on l.id = t.loyiha_id
+      where l.holat = 'faol' and t.holat in ('ishlamoqda','navbatda','qayta') order by t.holat = 'ishlamoqda' desc, t.updated_at desc limit 20`);
+  const vazifalar = await q(`select id, tur, buyruq, holat, natija, updated_at from agent_vazifalar
+      where holat = 'tasdiq' order by updated_at desc limit 20`);
+  const loyihalar = await q(`select l.id, l.nom, l.holat, l.updated_at,
+        count(t.*) filter (where t.tur <> 'izoh')::int jami,
+        count(t.*) filter (where t.tur <> 'izoh' and t.holat = 'tasdiqlandi')::int tayyor
+      from studio_loyiha l left join studio_tugun t on t.loyiha_id = l.id
+      where l.holat in ('faol','tugadi') group by l.id order by l.updated_at desc limit 12`);
+  const k = keyingiTekshiruv();
+  const ishlayapti = (await q(`select count(*)::int n from agent_vazifalar where holat = 'ishlanmoqda'`))[0].n > 0;
+  return { tugunlar: tugunlarK, jarayon, vazifalar, loyihalar, agent: { ishlayapti, keyingi: { vaqt: k.vaqt, ertaga: k.ertaga, qoldi: k.qoldi } } };
+}
+
 // ================= O'qish =================
 export async function royxat() {
   await studioTayyorla();
   return {
-    loyihalar: await q(`select l.id, l.nom, l.holat, l.updated_at,
+    loyihalar: await q(`select l.id, l.nom, l.holat, l.updated_at, l.reklama, l.format,
         count(t.*) filter (where t.tur <> 'izoh')::int jami,
         count(t.*) filter (where t.tur <> 'izoh' and t.holat = 'tasdiqlandi')::int tayyor,
         count(t.*) filter (where t.holat in ('tekshiruvda','eskirgan'))::int kutadi,
@@ -337,7 +503,7 @@ export async function belgi(loyihaId: number) {
 
 export async function loyihaOl(loyihaId: number) {
   await studioTayyorla();
-  const l = (await q(`select id, nom, mavzu, loyiha, holat, vazifa_id, jurnal, buyruqlar, created_at, updated_at from studio_loyiha where id = $1`, [loyihaId]))[0];
+  const l = (await q(`select id, nom, mavzu, loyiha, holat, vazifa_id, jurnal, buyruqlar, reklama, format, qahramon_id, created_at, updated_at from studio_loyiha where id = $1`, [loyihaId]))[0];
   if (!l) throw new Error("Loyiha topilmadi");
   const t = await q(`select id, kalit, tur, nom, holat, x, y, w, ota, mazmun, versiyalar, izohlar, foiz, bosqich, updated_at from studio_tugun where loyiha_id = $1 order by tartib, id`, [loyihaId]);
   const v = l.vazifa_id
@@ -359,7 +525,7 @@ export async function loyihaOl(loyihaId: number) {
 export async function agentIshlari(loyihaId?: number) {
   await studioTayyorla();
   const ls = await q(
-    `select l.id, l.nom, l.mavzu, l.loyiha, l.vazifa_id, l.buyruqlar from studio_loyiha l
+    `select l.id, l.nom, l.mavzu, l.loyiha, l.vazifa_id, l.buyruqlar, l.reklama, l.format, l.qahramon_id from studio_loyiha l
      where l.holat = 'faol' and ($1::int is null or l.id = $1)
        and (exists (select 1 from studio_tugun t where t.loyiha_id = l.id and t.holat in ('navbatda','qayta','ishlamoqda'))
             or jsonb_array_length(l.buyruqlar) > 0)
@@ -375,7 +541,10 @@ export async function agentIshlari(loyihaId?: number) {
       qaydlar,
     });
   }
-  return { studio: natija };
+  // Kutubxona: loyihalar qahramon/ovoz/uslubni shu yerdan oladi; holat=navbatda — agent uchun ish (masalan, klon ovoz)
+  const kut = (await q(`select id, tur, nom, mazmun, rasm, holat from studio_kutubxona where holat <> 'ochirildi' order by tur, id`))
+    .map((k: any) => ({ ...k, mazmun: fayllarniOch(k.mazmun, true) }));
+  return { studio: natija, kutubxona: kut, kutubxona_ishi: kut.filter((k: any) => k.holat === "navbatda").map((k: any) => k.id) };
 }
 
 // POST {amal:"tugun", loyiha_id, kalit, holat?, foiz?, bosqich?, mazmun?, jurnal?}
