@@ -299,6 +299,19 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
   }
 
   const id = Number(idS);
+  if (amal === "tk") {
+    const i = Number(data.split(":")[3] ?? 0);
+    const v = (await q(`select natija from agent_vazifalar where id = $1`, [id]))[0];
+    const t = v?.natija?.takliflar?.[i];
+    if (!t) { await javob(cq.id, "Taklif topilmadi", true); return true; }
+    if (t.qoshildi) { await javob(cq.id, `Allaqachon navbatda: #${t.qoshildi}`, true); return true; }
+    const yangi = await navbatgaQosh(String(t.buyruq));
+    await q(`update agent_vazifalar set natija = jsonb_set(natija, $2::text[], to_jsonb($3::int)) where id = $1`, [id, `{takliflar,${i},qoshildi}`, yangi.id]);
+    await javob(cq.id, `✅ #${yangi.id} navbatga qo‘shildi`);
+    await yubor(chatId, `✅ <b>#${yangi.id}</b> navbatga qo‘shildi: <i>${esc(String(t.matn))}</i>\n⏰ Keyingi tekshiruv: ${keyingiMatn()}`, undefined, msgId);
+    await panelYangila();
+    return true;
+  }
   if (amal === "oz") {
     const v = (await q(`select holat from agent_vazifalar where id = $1`, [id]))[0];
     if (!v || v.holat !== "tasdiq") { await javob(cq.id, v ? `Holati: ${HOLAT_BELGI[v.holat] ?? v.holat}` : "Vazifa topilmadi", true); return true; }
@@ -699,7 +712,7 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[] };
+type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
 
 // Tasdiq xabarida: Instagram caption va Telegram matni alohida
 function ikkiMatn(n: Natija) {
@@ -708,6 +721,18 @@ function ikkiMatn(n: Natija) {
   if (n.tg_matn) qism.push(`📢 <b>Telegram matni:</b>\n${esc(n.tg_matn)}`);
   if (n.tg_matn || n.caption) qism.push(`<i>✏️ bosib «ig: yangi caption» yoki «tg: yangi matn» yozsangiz — darhol almashtiraman.</i>`);
   return qism.length ? "\n\n" + qism.join("\n\n") : "";
+}
+// Botga uzun matn yuborilmaydi: 3 qatorlik xulosa (agent bergan «qisqa» yoki matndan avtomatik)
+function qisqaAjrat(n: Natija): string {
+  const tozala = (x: string) => x.replace(/^[\s•\-–*\d.)]+/, "").replace(/\*\*/g, "").trim();
+  if (n.qisqa?.trim()) return n.qisqa.trim().split("\n").map(tozala).filter(Boolean).slice(0, 4).map((x) => x.slice(0, 110)).join("\n");
+  const qatorlar = String(n.matn ?? "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const i = qatorlar.findIndex((x) => /^(xulosa|qisqacha|asosiy)/i.test(x.replace(/[^\p{L}]/gu, "")));
+  const tanlov = (i >= 0 ? qatorlar.slice(i + 1) : qatorlar).filter((x) => !/^[A-ZʻʼʻO‘G‘ \d]{6,}$/.test(x)).slice(0, 3);
+  return tanlov.map(tozala).map((x) => (x.length > 110 ? x.slice(0, 107) + "…" : x)).join("\n");
+}
+function taklifTugmalari(id: number, n: Natija) {
+  return (n.takliflar ?? []).slice(0, 3).map((t, i) => [{ text: `▶️ ${String(t.matn).slice(0, 40)}`, callback_data: `ag:tk:${id}:${i}` }]);
 }
 export async function apiNatija(id: number, n: Natija) {
   // Murojaat havolalari: dispetcher Zernio orqali joylasa ham caption'da bo'lsin
@@ -721,7 +746,9 @@ export async function apiNatija(id: number, n: Natija) {
                     joriy = jsonb_array_length(reja), holat = 'bajarildi', natija = $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(n)]);
     await holatXabariniYangila(id, "tayyor");
     const bosh = v.tur === "hisobot" ? "📊 <b>Akkaunt hisoboti</b>" : `🔎 <b>Tahlil #${id}</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
-    const m = await yubor(egasi(), `${bosh}\n\n${esc(n.matn ?? "").slice(0, 3800)}`, [[{ text: "📱 Ilovada", web_app: { url: `${ILOVA_URL}#agent` } }]]);
+    const q3 = qisqaAjrat(n);
+    const kb = [...taklifTugmalari(id, n), [{ text: "📄 To‘liq hisobot — ilovada", web_app: { url: `${ILOVA_URL}#agent` } }]];
+    const m = await yubor(egasi(), `${bosh}\n\n${esc(q3)}${n.takliflar?.length ? "\n\n<i>Tugmani bossangiz — agent shu ishni boshlaydi.</i>" : ""}`, kb);
     await q(`update agent_vazifalar set tg_msg = $2 where id = $1`, [id, m.message_id]);
     await panelYangila();
     return { tg_msg: m.message_id };
@@ -730,7 +757,7 @@ export async function apiNatija(id: number, n: Natija) {
                   joriy = jsonb_array_length(reja) where id = $1`, [id]);
   await holatXabariniYangila(id, "tayyor");
   const sarlavha = `🤖 <b>#${id} tayyor</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
-  const tana = esc(n.matn ?? "") + ikkiMatn(n);
+  const tana = esc(n.qisqa ? qisqaAjrat(n) : String(n.matn ?? "").length > 600 ? qisqaAjrat(n) + "\n<i>…to‘liq matn — ilovada</i>" : String(n.matn ?? "")) + ikkiMatn(n);
   const izoh = n.izoh ? `\n\n💬 <i>${esc(n.izoh)}</i>` : "";
   const kb = tasdiqTugmalari(id, Boolean(n.media_url || n.media_urls?.length));
   let msgId: number;

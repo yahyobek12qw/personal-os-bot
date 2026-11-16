@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(await apiJarayon(id, String(b.bosqich ?? ""), b.taxmin_daq ? Number(b.taxmin_daq) : undefined));
       case "natija":
         if (!b.matn) return res.status(400).json({ xato: "matn kerak" });
-        return res.status(200).json(await apiNatija(id, { matn: b.matn, media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh, caption: b.caption, toliq_url: b.toliq_url, tg_matn: b.tg_matn, media_urls: Array.isArray(b.media_urls) ? b.media_urls.map(String) : undefined }));
+        return res.status(200).json(await apiNatija(id, { matn: b.matn, media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh, caption: b.caption, toliq_url: b.toliq_url, tg_matn: b.tg_matn, media_urls: Array.isArray(b.media_urls) ? b.media_urls.map(String) : undefined, qisqa: b.qisqa ? String(b.qisqa) : undefined, takliflar: Array.isArray(b.takliflar) ? b.takliflar.filter((t: any) => t?.matn && t?.buyruq).slice(0, 3).map((t: any) => ({ matn: String(t.matn), buyruq: String(t.buyruq) })) : undefined }));
       case "natija_qosh": {
         // Natijaga jim qo'shimcha (xabar yubormaydi): masalan, tuzatilgan media_urls/tg_matn
         const ruxsat = ["tg_matn", "caption", "media_urls", "media_url", "media_tur", "toliq_url"];
