@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
-import { rasmYasa } from "../lib/rasm";
+import { rasmYasa, rasmTekshir } from "../lib/rasm";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -36,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("X-Jami", String(f.jami)); res.setHeader("X-Bo", String(f.bo)); res.setHeader("X-Oxir", String(f.oxir)); res.setHeader("X-Nom", f.nom ?? "fayl");
       return res.status(200).send(f.data);
     }
+    if (req.method === "GET" && req.query.rasm) return res.status(200).json(await rasmTekshir());
     if (req.method === "GET" && req.query.buyruqlar) {
       // Bot menyusi: mavjud buyruqlarni o'qiydi; "yangila" bo'lsa agent buyruqlarini qo'shadi
       const bor: { command: string; description: string }[] = await tg("getMyCommands", {});
