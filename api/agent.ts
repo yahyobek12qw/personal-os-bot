@@ -1,3 +1,4 @@
+import { faqatEgasiga } from "../lib/maxfiy";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
@@ -59,29 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await tg("setMyCommands", { commands: yangi.slice(0, 100), scope });
       return res.status(200).json({ buyruqlar: yangi });
     }
-    if (req.method === "GET" && req.query.maxfiy) {
-      // Bot faqat egasi uchun: buyruqlar menyusi va Mini App tugmasini boshqalardan yashiradi
-      const egasiId = Number(process.env.ALLOWED_CHAT_ID);
-      const scope = { type: "chat", chat_id: egasiId };
-      const umumiy: any[] = await tg("getMyCommands", {});
-      const egasinki: any[] = await tg("getMyCommands", { scope });
-      if (umumiy.length) {
-        if (!egasinki.length) await tg("setMyCommands", { commands: umumiy, scope });
-        await tg("deleteMyCommands", {});
-      }
-      const tugma = await tg("getChatMenuButton", {});
-      if (tugma?.type === "web_app") {
-        // egasining chatiga aniq o'rnatiladi (aks holda umumiy sozlamani meros qilib oladi)
-        await tg("setChatMenuButton", { chat_id: egasiId, menu_button: tugma });
-        await tg("setChatMenuButton", { menu_button: { type: "commands" } });
-      }
-      return res.status(200).json({
-        umumiy_buyruqlar: (await tg("getMyCommands", {})).length,
-        egasi_buyruqlar: (await tg("getMyCommands", { scope })).length,
-        umumiy_tugma: (await tg("getChatMenuButton", {}))?.type,
-        egasi_tugma: (await tg("getChatMenuButton", { chat_id: egasiId }))?.type,
-      });
-    }
+    if (req.method === "GET" && req.query.maxfiy) return res.status(200).json(await faqatEgasiga());
     if (req.method === "GET" && req.query.webhook) {
       // Diagnostika: webhook kanal postlarini (channel_post) qabul qiladimi; kerak bo'lsa tuzatadi
       const w = await tg("getWebhookInfo", {});

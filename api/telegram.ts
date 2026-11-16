@@ -5,6 +5,7 @@ import { xabarKeldi, tugmaBosildi } from "../lib/bot2";
 import { kanalUlash } from "../lib/agent2";
 import { guruhXabari, guruh } from "../lib/guruh";
 import { javob } from "../lib/telegram";
+import { birMartaYashir } from "../lib/maxfiy";
 
 // Personal OS 2.0 bot: ma'lumotlar Neon bazasida (lib/bot2.ts). Eski Notion versiyasi: git tarixida.
 // Bot faqat egasi uchun: boshqalarning shaxsiy xabarlari va tugmalariga javob yo'q, begona guruhlardan chiqib ketadi,
@@ -27,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else if (update.message) {
       const m = update.message;
       if (m.chat?.type === "private") {
-        if (String(m.chat.id) === egasi) await xabarKeldi(m);
+        if (String(m.chat.id) === egasi) await Promise.all([xabarKeldi(m), birMartaYashir()]);
       } else if (await begonaGuruhgaQoshildi(m, egasi)) {
         // begona odam botni o'z guruhiga qo'shdi — bot chiqib ketdi
       } else if (String(m.from?.id) === egasi && /^\/ulash(@\w+)?(\s|$)/i.test(m.text ?? "")) {
