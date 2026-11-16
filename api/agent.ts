@@ -7,7 +7,7 @@ import { tgHavola } from "../lib/havolalar";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
 import { savolEslatma, guruh, faqBirlashtir, testYoq } from "../lib/guruh";
-import { agentIshlari, agentTugun, agentTugunYangi, agentBuyruqOqildi, kutubxonaSaqla } from "../lib/studio";
+import { agentIshlari, agentTugun, agentTugunYangi, agentBuyruqOqildi, kutubxonaSaqla, yangiLoyiha } from "../lib/studio";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -120,6 +120,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(await agentTugun(b));
       case "tugun_yangi":
         return res.status(200).json(await agentTugunYangi(b));
+      case "studio_yangi":
+        // Agent egasining so'rovi bilan studiyada yangi loyiha ochadi (masalan, sinov yoki g'oyadan video)
+        if (!b.mavzu) return res.status(400).json({ xato: "mavzu kerak" });
+        return res.status(200).json(await yangiLoyiha(String(b.mavzu), b.nom ? String(b.nom) : undefined, {
+          reklama: b.reklama ? String(b.reklama) : undefined, format: b.format ? String(b.format) : undefined,
+          qahramon: b.qahramon ? Number(b.qahramon) : null, variantlar: b.variantlar ? Number(b.variantlar) : undefined }));
       case "kutubxona":
         // Agent kutubxona elementini yaratadi yoki yangilaydi (masalan, klon ovoz namunasi, qahramon renderlari). holat: faol | tekshiruvda | xato
         return res.status(200).json(await kutubxonaSaqla(b, "agent"));

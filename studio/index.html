@@ -249,6 +249,7 @@ body[data-rejim=studio]:not(.inspOpen) #insp{display:none}
     <button class="nav" type="button" data-nav="k:manba"><span data-i="manba"></span><span class="txt">Manbalar</span></button>
     <div class="flex1"></div>
     <div class="nav" id="railAgent" style="cursor:default"><span class="pill p-kutmoqda" id="railPill"><i></i><span class="txt">Agent</span></span></div>
+    <button class="nav" type="button" data-shaxsiy><span data-i="home"></span><span class="txt">Shaxsiy</span></button>
     <button class="nav" type="button" id="temaBtn"><span data-i="tema"></span><span class="txt">Mavzu</span></button>
     <button class="nav" type="button" data-rejimga="agent"><span data-i="phone"></span><span class="txt">Telefon ko‘rinishi</span></button>
   </aside>
@@ -260,6 +261,7 @@ body[data-rejim=studio]:not(.inspOpen) #insp{display:none}
       <span class="pill" id="agentPill" hidden></span>
       <div class="flex1"></div>
       <span class="studioOnly row" id="topTools"></span>
+      <button class="ibtn agentOnly" type="button" data-shaxsiy aria-label="Shaxsiy" id="shaxBtn"></button>
       <button class="ibtn agentOnly" type="button" id="temaBtn2" aria-label="Mavzu"></button>
       <button class="ibtn agentOnly" type="button" data-rejimga="studio" aria-label="To‘liq studiya"></button>
     </header>
@@ -343,12 +345,14 @@ const IC = {
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   logo: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/>',
   up: '<path d="M12 16V4M6 10l6-6 6 6M4 20h16"/>',
+  home: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/>',
 };
 const ic = (n, s = 18, w = 1.9) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n] || ''}</svg>`;
 $$('[data-i]').forEach((x) => (x.innerHTML = ic(x.dataset.i)));
 $('#logoI').innerHTML = ic('logo', 17, 2.2); $('#plusI').innerHTML = ic('plus', 17, 2.4);
 $('#iClose').innerHTML = ic('x', 18); $('#backBtn').innerHTML = ic('back', 20, 2.2); $('#zFit').innerHTML = ic('fit', 17);
-$('#temaBtn2').innerHTML = ic('tema', 19); $('[data-rejimga=studio]').innerHTML = ic('desk', 19);
+$('#temaBtn2').innerHTML = ic('tema', 19); $('#shaxBtn').innerHTML = ic('home', 19);
+$$('[data-shaxsiy]').forEach((b) => (b.onclick = () => location.assign('/app/shaxsiy/'))); $('[data-rejimga=studio]').innerHTML = ic('desk', 19);
 $('#cMore').innerHTML = ic('more', 20); $('#composer .send').innerHTML = ic('send', 18, 2.4);
 
 const S = { view: 'lenta', lenta: null, lentaTab: 'kut', loyihalar: [], kut: [], id: null, d: null, belgi: 0, cam: { x: 60, y: 60, z: 0.85 }, sel: null, itab: 'natija', h: new Map(), sig: new Map(), drag: null, busy: false, kTur: null, kItem: null, reklama: '', ochiqKarta: null };
@@ -381,6 +385,13 @@ $$('[data-rejimga]').forEach((b) => (b.onclick = () => rejimQoy(b.dataset.rejimg
 const studioMi = () => document.body.dataset.rejim === 'studio';
 
 // ---------------- Kirish va API ----------------
+// Shaxsiy (Personal OS) havolalari: #e=<id>, #bugun, #kalendar, #sohalar, #inbox yoki start_param e_<id> → /app/shaxsiy/
+(function shaxsiyHavola() {
+  const h = location.hash.slice(1);
+  let sp = ''; try { sp = (tg() && tg().initDataUnsafe && tg().initDataUnsafe.start_param) || ''; } catch (e) {}
+  if (/^e=[0-9a-f-]{36}$/.test(h) || ['bugun', 'kalendar', 'sohalar', 'inbox'].includes(h)) location.replace('/app/shaxsiy/' + location.hash);
+  else if (/^e_[0-9a-f-]{36}$/.test(sp)) location.replace('/app/shaxsiy/#e=' + sp.slice(2));
+})();
 (function hashKalit() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.get('k')) LS.s('studio_k', h.get('k'));

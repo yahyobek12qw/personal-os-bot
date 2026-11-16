@@ -3,7 +3,9 @@
 export type Tugma = { text: string; callback_data?: string; url?: string; web_app?: { url: string } };
 
 export const ILOVA_URL = "https://personal-os-bot-gold.vercel.app/app/";
-export const ilovaTugma = (matn = "📱 Ilovani ochish", ekran?: string): Tugma => ({ text: matn, web_app: { url: ekran ? `${ILOVA_URL}#${ekran}` : ILOVA_URL } });
+// /app/ — Studiya (asosiy); /app/shaxsiy/ — Personal OS (kichik bo'lim)
+export const SHAXSIY_URL = `${ILOVA_URL}shaxsiy/`;
+export const ilovaTugma = (matn = "📱 Ilovani ochish", ekran?: string): Tugma => ({ text: matn, web_app: { url: ekran ? `${SHAXSIY_URL}#${ekran}` : SHAXSIY_URL } });
 export type Klaviatura = Tugma[][];
 
 function token(): string {
