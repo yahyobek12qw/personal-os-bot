@@ -4,7 +4,7 @@ import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
-import { savolEslatma, guruh } from "../lib/guruh";
+import { savolEslatma, guruh, faqBirlashtir, testYoq } from "../lib/guruh";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -85,6 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(qism)]);
         return res.status(200).json({ ok: true, qoshildi: Object.keys(qism) });
       }
+      case "faq":
+        return res.status(200).json({ faq: await faqBirlashtir(b.faq ?? {}) });
+      case "guruh_test":
+        return res.status(200).json(await testYoq(Number(b.daqiqa ?? 60)));
       case "kanal_ochir": {
         // Ulangan kanaldagi bot postini o'chirish (xato joylangan post uchun)
         const k = (await q(`select qiymat from agent_sozlama where kalit = 'tg_kanal'`))[0]?.qiymat;

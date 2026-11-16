@@ -325,7 +325,7 @@ export async function xabarKeldi(m: any) {
     if (cmd === "rasmpost" || cmd === "karusel") return rasmpostBuyrugi(chatId, arg, m.message_id);
     if (cmd === "kunlik") return kunlikBuyrugi(chatId);
     if (cmd === "kanal") return kanalBuyrugi(chatId);
-    if (cmd === "guruh") return guruhBuyrugi(chatId);
+    if (cmd === "guruh") return guruhBuyrugi(chatId, arg);
     if (cmd === "faq") return faqBuyrugi(chatId, arg);
     if (cmd === "post") return yubor(chatId, "📤 <b>Post joylash</b>\nRasm yoki videoni yuboring va izohiga (caption) <code>/post</code> dan keyin matnni yozing:\n<code>/post Tikuvxonangiz uchun yangi imkoniyat…</code>\nMen ko'rsataman, siz ✅ bosasiz — agent Instagram'ga (va ulangan bo'lsa kanalga) joylaydi.");
     if (cmd === "agent") return panelYangila(true);

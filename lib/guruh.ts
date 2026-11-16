@@ -27,8 +27,25 @@ export const MAVZULAR: Record<string, { nom: string; soz: RegExp }> = {
   xavfsiz: { nom: "Xavfsizlik", soz: /(xavfsiz|maxfiy|ma[‘'`]?lumotlarim|безопас)/i },
 };
 const ESKALATSIYA = /(chegirma|skidka|скидк|shartnoma|договор|1c|1с|integrats|интеграц|smena|filial|shikoyat|жалоб|xato\s*chiq|ishlamayapti|hamkor|партн)/i;
-const SPAM = /(t\.me\/(?!product_crm)|telegram\.me\/|https?:\/\/(?!productcrm)|kripto|crypto|binance|usdt|ish\s*taklif|daromad\s*kafolat|заработ)/i;
+const SPAM = /(t\.me\/(?!product_crm|productcrmbot|yahyobekqodirov)|telegram\.me\/|https?:\/\/(?!productcrm|t\.me\/(product_crm|productcrmbot|yahyobekqodirov))|kripto|crypto|binance|usdt|ish\s*taklif|daromad\s*kafolat|заработ)/i;
 
+// Test rejimi: egasining guruhdagi xabarlari ham oddiy foydalanuvchiniki kabi ishlanadi
+export async function testRejim(): Promise<boolean> {
+  const t = (await q(`select qiymat from agent_sozlama where kalit = 'guruh_test'`))[0]?.qiymat;
+  return Boolean(t?.gacha && Date.parse(t.gacha) > Date.now());
+}
+export async function testYoq(daqiqa: number) {
+  await jadval();
+  const gacha = new Date(Date.now() + Math.max(0, daqiqa) * 60000).toISOString();
+  await q(`insert into agent_sozlama (kalit, qiymat) values ('guruh_test', $1::jsonb) on conflict (kalit) do update set qiymat = excluded.qiymat`, [JSON.stringify({ gacha })]);
+  return { gacha };
+}
+export async function faqBirlashtir(yangi: Record<string, string>) {
+  const f = await faqOl();
+  for (const [k, v] of Object.entries(yangi)) if (MAVZULAR[k]) { if (v) f[k] = String(v); else delete f[k]; }
+  await faqYoz(f);
+  return f;
+}
 export async function faqOl(): Promise<Record<string, string>> {
   await jadval();
   return (await q(`select qiymat from agent_sozlama where kalit = 'faq'`))[0]?.qiymat ?? {};
@@ -60,7 +77,7 @@ export async function guruhXabari(m: any): Promise<boolean> {
   const g = await guruh();
   if (!g || String(m.chat.id) !== String(g.id)) return false;
   if (m.is_automatic_forward || m.sender_chat || m.from?.is_bot) return true; // kanal postining nusxasi yoki bot
-  if (String(m.from?.id) === egasi()) return true; // egasi o'zi yozadi
+  if (String(m.from?.id) === egasi() && !(await testRejim())) return true; // egasi o'zi yozadi (test rejimida — oddiy foydalanuvchidek)
   const matn = String(m.text ?? m.caption ?? "").trim();
   if (!matn) return true;
   const muallif = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(" ") || "Foydalanuvchi";
@@ -142,7 +159,12 @@ export async function savolEslatma() {
 }
 
 // ---------- Buyruqlar: /guruh va /faq ----------
-export async function guruhBuyrugi(chatId: number | string) {
+export async function guruhBuyrugi(chatId: number | string, arg = "") {
+  if (/^test/i.test(arg)) {
+    const yoq = /off|o[‘'`]?chir|stop/i.test(arg);
+    const t = await testYoq(yoq ? 0 : 60);
+    return yubor(chatId, yoq ? "🧪 Test rejimi o‘chirildi — guruhdagi xabarlaringizga bot javob bermaydi." : `🧪 <b>Test rejimi 1 soatga yoqildi</b> (${new Date(Date.parse(t.gacha) + 5 * 3600e3).toISOString().slice(11, 16)} gacha). Guruhda o‘z nomingizdan (kanal nomidan emas) yozing — bot sizga oddiy foydalanuvchidek javob beradi.`);
+  }
   let g = await guruh();
   if (g) { // nom va username'ni yangilash (bot qo'shilgandan keyin)
     const c = await tg("getChat", { chat_id: g.id }).catch(() => null);
