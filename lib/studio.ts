@@ -556,7 +556,9 @@ export async function agentTugun(b: any) {
   const holat = b.holat ? String(b.holat) : null;
   if (holat && !AGENT_HOLATLARI.includes(holat as Holat)) throw new Error("agent holati: ishlamoqda | tekshiruvda | xato");
   if (holat === "ishlamoqda" && !["navbatda", "qayta", "ishlamoqda", "xato"].includes(t.holat)) throw new Error(`tugun holati: ${t.holat} — ishlab bo'lmaydi`);
-  if (holat === "tekshiruvda" && !["navbatda", "qayta", "ishlamoqda", "xato"].includes(t.holat)) throw new Error(`tugun holati: ${t.holat}`);
+  // oldindan:true — agent butun loyihani bir yo'la tayyorlagan (masalan, egasi so'ragan sinov): kutayotgan tugun ham tekshiruvga chiqadi
+  const ruxsatli = b.oldindan === true ? ["kutmoqda", "navbatda", "qayta", "ishlamoqda", "xato"] : ["navbatda", "qayta", "ishlamoqda", "xato"];
+  if (holat === "tekshiruvda" && !ruxsatli.includes(t.holat)) throw new Error(`tugun holati: ${t.holat}`);
   const yangi = b.mazmun && typeof b.mazmun === "object" ? b.mazmun : null;
   if (holat === "tekshiruvda") {
     const eski = t.mazmun ?? {};
