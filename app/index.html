@@ -206,13 +206,30 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
 
   async function sohalarYukla() { const r = await api('sohalar'); S.sohalar = r.sohalar; S.data['sohalar:null'] = r; return r; }
 
-  function render() {
+  // foydalanuvchi band: yozyapti yoki video ko‘ryapti — jim yangilanish kutib turadi
+  function band() {
+    const a = document.activeElement;
+    if (a && a.closest && a.closest('#app') && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName)) return true;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+    return [...document.querySelectorAll('#app video')].some((v) => !v.paused && !v.ended);
+  }
+  function render(saqla) {
     const kurs = S.tab;
+    // jim yangilanishda: yozilgan matn va video joyi yo‘qolmasin
+    const qiym = {}, vid = {};
+    if (saqla) {
+      document.querySelectorAll('#app textarea[id], #app input[id]:not([type=file]):not([type=checkbox]):not([type=radio])').forEach((e) => { if (e.value) qiym[e.id] = e.value; });
+      document.querySelectorAll('#app video').forEach((v) => { if (v.currentTime > 0 && !v.ended) vid[v.currentSrc || v.src] = v.currentTime; });
+    }
     document.querySelectorAll('nav button[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === (TABS.includes(kurs) ? kurs : (S.stek.find((x) => TABS.includes(x.tab)) || {}).tab || 'bugun')));
     const d = S.data[kalit(S.tab, S.par[S.tab])];
     $('#app').innerHTML = d && S.sohalar ? V[S.tab](d) : skelet();
     const ib = (S.data['bugun:null'] || {}).inbox || 0; const b = $('#ibadge'); b.hidden = !ib; b.textContent = ib;
     const ag = ((S.data['agent:null'] || {}).vazifalar || []).filter((v) => v.holat === 'tasdiq').length; const ab = $('#abadge'); if (ab) { ab.hidden = !ag; ab.textContent = ag; }
+    if (saqla) {
+      Object.entries(qiym).forEach(([id, v]) => { const e = document.getElementById(id); if (e && !e.value) e.value = v; });
+      document.querySelectorAll('#app video').forEach((v) => { const t = vid[v.src]; if (t) v.addEventListener('loadedmetadata', () => { v.currentTime = t; }, { once: true }); });
+    }
     orqaTugma();
     if (S.tab === 'element') setTimeout(autoBalandlik, 0);
   }
@@ -223,6 +240,14 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
     try {
       if (!S.sohalar) await sohalarYukla();
       const r = tab === 'sohalar' ? await sohalarYukla() : await api(tab === 'qidiruv' ? 'qidiruv' : tab, tab === 'qidiruv' ? { q: S.qSoz } : (S.par[tab] || {}));
+      if (jim === 'fon') {
+        const eski = S.data[k];
+        if (eski && JSON.stringify(eski) === JSON.stringify(r)) { if (S.kech && !band()) { S.kech = false; render(true); } return; }
+        S.data[k] = r;
+        if (kalit(S.tab, S.par[S.tab]) !== k) return;
+        if (band()) { S.kech = true; return; }
+        S.kech = false; render(true); return;
+      }
       S.data[k] = r;
       if (kalit(S.tab, S.par[S.tab]) === k) render();
     } catch (e) {
@@ -486,8 +511,8 @@ mark{background:var(--claySoft);color:var(--clayD);border-radius:5px;padding:0 3
       '<button class="btn clay" data-act="agVaqtYubor" data-id="' + id + '" style="width:100%">🗓 Rejalash</button>');
   }
   // jonli yangilanish: Ish/Research har 5 s, Holat har 30 s
-  setInterval(() => { if (S.tab !== 'agent' || document.hidden || sheetOchiq()) return; const tb = S.agTab || 'ish'; if (tb === 'ish' || tb === 'research') yukla('agent', true); }, 5000);
-  setInterval(() => { if (S.tab === 'agent' && (S.agTab || 'ish') === 'holat' && !document.hidden) { api('agentHolat').then((r) => { S.agHol = r; render(); }).catch(() => {}); } }, 30000);
+  setInterval(() => { if (S.tab !== 'agent' || document.hidden || sheetOchiq()) return; const tb = S.agTab || 'ish'; if (tb === 'ish' || tb === 'research') yukla('agent', 'fon'); }, 5000);
+  setInterval(() => { if (S.tab === 'agent' && (S.agTab || 'ish') === 'holat' && !document.hidden) { api('agentHolat').then((r) => { if (JSON.stringify(S.agHol) === JSON.stringify(r)) return; S.agHol = r; if (!band()) render(true); }).catch(() => {}); } }, 30000);
 
   // ================= KALENDAR =================
   V.kalendar = (d) => {
