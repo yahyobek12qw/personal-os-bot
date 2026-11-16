@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
+import { tg } from "../lib/telegram";
 import { jadvalTayyorla, apiKontekst, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
 // Rejali Claude shu API orqali navbatni o'qiydi va natija yuboradi.
@@ -22,6 +23,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("X-Jami", String(f.jami)); res.setHeader("X-Bo", String(f.bo)); res.setHeader("X-Oxir", String(f.oxir)); res.setHeader("X-Nom", f.nom ?? "fayl");
       return res.status(200).send(f.data);
+    }
+    if (req.method === "GET" && req.query.webhook) {
+      // Diagnostika: webhook kanal postlarini (channel_post) qabul qiladimi; kerak bo'lsa tuzatadi
+      const w = await tg("getWebhookInfo", {});
+      const au: string[] = w?.allowed_updates ?? [];
+      let tuzatildi = false;
+      if (req.query.webhook === "tuzat" && w?.url && au.length && !au.includes("channel_post")) {
+        await tg("setWebhook", { url: w.url, allowed_updates: [...au, "channel_post"], ...(process.env.TELEGRAM_SECRET ? { secret_token: process.env.TELEGRAM_SECRET } : {}) });
+        tuzatildi = true;
+      }
+      return res.status(200).json({ allowed_updates: au, pending: w?.pending_update_count, oxirgi_xato: w?.last_error_message ?? null, tuzatildi });
     }
     if (req.method === "GET") { const vazifalar = await apiNavbat(); return res.status(200).json({ vazifalar, ...(vazifalar.length || req.query.kontekst ? await apiKontekst() : {}) }); }
     if (req.method !== "POST") return res.status(405).json({ xato: "method" });
