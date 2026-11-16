@@ -73,7 +73,10 @@ export async function jadvalTayyorla() {
     add column if not exists taxmin_daq int,
     add column if not exists boshlangan timestamptz,
     add column if not exists holat_msg int,
-    add column if not exists ota_id int`);
+    add column if not exists ota_id int,
+    add column if not exists reja jsonb not null default '[]'::jsonb,
+    add column if not exists joriy int not null default 0`);
+  await q(`create table if not exists agent_sozlama (kalit text primary key, qiymat jsonb)`);
   tayyor = true;
 }
 
@@ -119,6 +122,7 @@ export async function kontentBuyrugi(chatId: number | string, arg: string, reply
     });
   }
   const v = await navbatgaQosh(arg);
+  await panelYangila();
   return yubor(
     chatId,
     [
@@ -174,6 +178,12 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
   const [, amal, idS] = data.split(":");
   await jadvalTayyorla();
 
+  if (amal === "pn") {
+    await javob(cq.id, "🔄 Yangilandi");
+    const p = await panelMatni();
+    await tg("editMessageText", { chat_id: chatId, message_id: msgId, text: p.text, parse_mode: "HTML", reply_markup: { inline_keyboard: p.kb } }).catch(() => {});
+    return true;
+  }
   if (amal === "ls") {
     const x = await navbatXabari();
     await javob(cq.id);
@@ -224,6 +234,7 @@ export async function agentTugmasi(cq: any): Promise<boolean> {
       reply_markup: { force_reply: true, input_field_placeholder: "Masalan: hook qisqaroq, oxirida demo taklifi" },
     });
   }
+  await panelYangila();
   return true;
 }
 
@@ -261,6 +272,7 @@ export async function agentJavobi(m: any): Promise<boolean> {
       undefined,
       m.message_id,
     );
+    await panelYangila();
     return true;
   }
   return false;
@@ -283,24 +295,47 @@ export async function apiNavbat() {
   );
 }
 
-// Vazifaning jonli holat xabari: qadamlar, o'tgan va taxminiy vaqt
-function holatMatni(v: any, yakun?: string) {
-  const qadamlar = (v.qadamlar ?? []) as { matn: string; vaqt: string }[];
-  const otdi = v.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(v.boshlangan)) / 60000)) : 0;
-  const t = [
-    `${yakun ? "✅" : "⚙️"} <b>#${v.id} ${yakun ?? "ishlanmoqda"}</b> · <i>${esc(String(v.buyruq).slice(0, 70))}</i>`,
-    v.boshlangan ? `🕐 Boshlandi ${hhmm(Date.parse(v.boshlangan))} · ${davomiylik(otdi)} o'tdi${!yakun && v.taxmin_daq ? ` · taxminan ${davomiylik(Math.max(1, v.taxmin_daq - otdi))} qoldi` : ""}` : "",
-    "",
-  ];
-  qadamlar.forEach((x, i) => {
-    const oxirgi = i === qadamlar.length - 1 && !yakun;
-    t.push(`${oxirgi ? "⏳" : "✔️"} ${esc(x.matn)} <i>${hhmm(Date.parse(x.vaqt))}</i>`);
+// Tur bo'yicha standart reja (agent `ol` da o'z rejasini yuborishi ham mumkin)
+export function standartReja(tur: string, buyruq: string): string[] {
+  if (tur === "video" || /video|mp4|montaj/i.test(buyruq))
+    return ["Ssenariyni o'qish", "Ovoz yozish", "Sahnalar va animatsiya", "Kadrlarni render qilish", "Musiqa va SFX", "MP4 yig'ish", "Tekshiruv", "Natijani yuborish"];
+  if (/g'oya|goya/i.test(buyruq)) return ["Bilim va trendlarni o'qish", "10 ta g'oya", "Saralash va tekshiruv", "Natijani yuborish"];
+  return ["Bilim va brendni o'qish", "5 ta hook", "Ssenariy va storyboard", "Caption va Telegram post", "Tekshiruv", "Natijani yuborish"];
+}
+
+const norm = (x: string) => x.toLowerCase().replace(/[‘’ʻ`']/g, "'").replace(/\s+/g, " ").trim();
+const chiziq = (f: number) => { const n = Math.round(f * 10); return "▰".repeat(n) + "▱".repeat(10 - n); };
+
+function rejaQatorlari(v: any, yakun: boolean) {
+  const reja = (v.reja ?? []) as string[];
+  const log = (v.qadamlar ?? []) as { matn: string; vaqt: string }[];
+  const vaqti = (nom: string) => { const x = [...log].reverse().find((l) => norm(l.matn) === norm(nom)); return x ? ` <i>${hhmm(Date.parse(x.vaqt))}</i>` : ""; };
+  return reja.map((nom, i) => {
+    if (yakun || i < v.joriy) return `✔️ ${esc(nom)}${vaqti(nom)}`;
+    if (i === v.joriy) return `⏳ <b>${esc(nom)}</b> ← hozir`;
+    return `▫️ ${esc(nom)}`;
   });
-  return t.filter((x, i) => x || i === 2).join("\n");
+}
+
+// Vazifaning jonli holat xabari: reja, hozirgi qadam, foiz, vaqt
+function holatMatni(v: any, yakun?: string) {
+  const reja = (v.reja ?? []) as string[];
+  const otdi = v.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(v.boshlangan)) / 60000)) : 0;
+  const foiz = yakun ? 1 : reja.length ? v.joriy / reja.length : 0;
+  const qoldi = v.taxmin_daq ? Math.max(1, v.taxmin_daq - otdi) : null;
+  return [
+    `${yakun ? "✅" : "⚙️"} <b>#${v.id} ${yakun ?? "ishlanmoqda"}</b> · <i>${esc(String(v.buyruq).slice(0, 70))}</i>`,
+    `${chiziq(foiz)} ${Math.round(foiz * 100)}% · ${yakun ? reja.length : v.joriy}/${reja.length} qadam`,
+    `🕐 ${v.boshlangan ? hhmm(Date.parse(v.boshlangan)) : ""} da boshlandi · ${davomiylik(otdi)} o'tdi${!yakun && qoldi ? ` · ~${davomiylik(qoldi)} qoldi` : ""}`,
+    "",
+    ...rejaQatorlari(v, Boolean(yakun)),
+    "",
+    `<i>Yangilandi ${hhmm(Date.now())}</i>`,
+  ].join("\n");
 }
 
 async function holatXabariniYangila(id: number, yakun?: string) {
-  const v = (await q(`select id, buyruq, qadamlar, taxmin_daq, boshlangan, holat_msg from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) return;
   const text = holatMatni(v, yakun);
   if (v.holat_msg) {
@@ -311,33 +346,119 @@ async function holatXabariniYangila(id: number, yakun?: string) {
   }
 }
 
-export async function apiOl(id: number, taxminDaq?: number) {
+// ======================= Agent paneli (qadalgan xabar) =======================
+
+export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
+  await jadvalTayyorla();
+  const rows = await q(
+    `select id, buyruq, holat, reja, joriy, taxmin_daq, boshlangan,
+            (updated_at at time zone 'Asia/Tashkent')::date = (now() at time zone 'Asia/Tashkent')::date bugun
+     from agent_vazifalar order by id`,
+  );
+  const qisqa = (r: any) => `<b>#${r.id}</b> ${esc(String(r.buyruq).slice(0, 48))}`;
+  const ish = rows.filter((r) => r.holat === "ishlanmoqda");
+  const navbat = rows.filter((r) => r.holat === "navbatda");
+  const tasdiq = rows.filter((r) => r.holat === "tasdiq");
+  const joylash = rows.filter((r) => r.holat === "tasdiqlandi");
+  const bajarildi = rows.filter((r) => ["bajarildi", "joylandi"].includes(r.holat) && r.bugun);
+  const k = keyingiTekshiruv();
+  const t = ["🤖 <b>Agent paneli</b>", ""];
+
+  if (ish.length) {
+    for (const r of ish) {
+      const reja = (r.reja ?? []) as string[];
+      const otdi = r.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(r.boshlangan)) / 60000)) : 0;
+      const qoldi = r.taxmin_daq ? Math.max(1, r.taxmin_daq - otdi) : null;
+      t.push(`⚙️ <b>Hozir ishlayapti:</b> ${qisqa(r)}`);
+      t.push(`   ⏳ ${esc(reja[r.joriy] ?? "...")} (${r.joriy + 1}/${reja.length})`);
+      t.push(`   ${chiziq(reja.length ? r.joriy / reja.length : 0)} · ${davomiylik(otdi)} o'tdi${qoldi ? ` · ~${davomiylik(qoldi)} qoldi` : ""}`);
+      const keyingi = reja.slice(r.joriy + 1);
+      if (keyingi.length) t.push(`   Keyin: ${keyingi.map(esc).join(" → ")}`);
+    }
+  } else {
+    t.push(`💤 <b>Hozir ishlamayapti.</b> Keyingi tekshiruv: ${k.ertaga ? "ertaga " : ""}<b>${k.vaqt}</b>`);
+  }
+
+  const bolim = (sarlavha: string, arr: any[], qoshimcha?: (r: any) => string) => {
+    if (!arr.length) return;
+    t.push("", `${sarlavha} (${arr.length})`);
+    for (const r of arr.slice(0, 6)) t.push(`• ${qisqa(r)}${qoshimcha ? qoshimcha(r) : ""}`);
+  };
+  bolim("⏳ <b>Navbatda</b>", navbat, (r) => ` · ~${davomiylik(r.taxmin_daq ?? taxminiyVaqt(r.buyruq))}`);
+  bolim("👀 <b>Sizning tasdig'ingizni kutmoqda</b>", tasdiq);
+  bolim("🚀 <b>Joylanishi kerak</b>", joylash);
+  bolim("✔️ <b>Bugun bajarildi</b>", bajarildi);
+
+  const jami = navbat.reduce((a, r) => a + (r.taxmin_daq ?? taxminiyVaqt(r.buyruq)), 0);
+  if (navbat.length) t.push("", `🧮 Navbatdagi ish jami: ~${davomiylik(jami)}`);
+  t.push("", `<i>Yangilandi ${hhmm(Date.now())}</i>`);
+  return { text: t.join("\n"), kb: [[{ text: "🔄 Yangilash", callback_data: "ag:pn" }, { text: "📋 Ro'yxat", callback_data: "ag:ls" }]] };
+}
+
+// Qadalgan panelni tahrirlaydi; bo'lmasa yangisini yuborib qadaydi
+export async function panelYangila(yangidan = false) {
+  try {
+    const p = await panelMatni();
+    const s = (await q(`select qiymat from agent_sozlama where kalit = 'panel_msg'`))[0];
+    const eski = s?.qiymat?.id as number | undefined;
+    if (eski && !yangidan) {
+      const ok = await tg("editMessageText", { chat_id: egasi(), message_id: eski, text: p.text, parse_mode: "HTML", reply_markup: { inline_keyboard: p.kb } })
+        .then(() => true).catch(() => false);
+      if (ok) return;
+    }
+    if (eski) await tg("unpinChatMessage", { chat_id: egasi(), message_id: eski }).catch(() => {});
+    const m = await yubor(egasi(), p.text, p.kb);
+    await tg("pinChatMessage", { chat_id: egasi(), message_id: m.message_id, disable_notification: true }).catch(() => {});
+    await q(`insert into agent_sozlama (kalit, qiymat) values ('panel_msg', $1::jsonb)
+             on conflict (kalit) do update set qiymat = excluded.qiymat`, [JSON.stringify({ id: m.message_id })]);
+  } catch (e) {
+    console.error("panel", e);
+  }
+}
+
+export async function apiOl(id: number, taxminDaq?: number, reja?: string[]) {
+  const v = (await q(`select tur, buyruq from agent_vazifalar where id = $1`, [id]))[0];
+  if (!v) return false;
+  const r0 = (reja?.length ? reja : standartReja(v.tur, v.buyruq)).map((x) => String(x).slice(0, 80));
   const r = (await q(
     `update agent_vazifalar
        set holat = 'ishlanmoqda', urinish = urinish + 1, updated_at = now(), boshlangan = now(),
-           taxmin_daq = coalesce($2, taxmin_daq), holat_msg = null,
-           qadamlar = jsonb_build_array(jsonb_build_object('matn', 'Vazifa olindi', 'vaqt', now()))
-     where id = $1 and holat = 'navbatda' returning id, buyruq`,
-    [id, taxminDaq ?? null],
+           taxmin_daq = coalesce($2, taxmin_daq, $4), holat_msg = null, reja = $3::jsonb, joriy = 0,
+           qadamlar = '[]'::jsonb
+     where id = $1 and holat = 'navbatda' returning id`,
+    [id, taxminDaq ?? null, JSON.stringify(r0), taxminiyVaqt(v.buyruq)],
   ))[0];
   if (!r) return false;
-  if (!taxminDaq) await q(`update agent_vazifalar set taxmin_daq = $2 where id = $1 and taxmin_daq is null`, [id, taxminiyVaqt(r.buyruq)]);
   await holatXabariniYangila(id);
+  await panelYangila();
   return true;
 }
 
-// Agent har bir qadamni yuboradi: holat xabari tahrirlanadi
+// Agent qadam boshlaganini aytadi: rejadagi nom bo'lsa — o'sha qadamga o'tadi, bo'lmasa rejaga qo'shiladi
 export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number) {
-  const r = (await q(
+  const v = (await q(`select reja, joriy, qadamlar from agent_vazifalar where id = $1 and holat = 'ishlanmoqda'`, [id]))[0];
+  if (!v) throw new Error("vazifa ishlanmoqda holatida emas");
+  const reja = [...((v.reja ?? []) as string[])];
+  const b = bosqich.slice(0, 80);
+  let idx = reja.findIndex((x) => norm(x) === norm(b) || norm(b).startsWith(norm(x)));
+  if (idx < 0) {
+    // rejada yo'q qadam: hozirgisidan keyin qo'shiladi
+    idx = Math.min(v.joriy + 1, reja.length);
+    reja.splice(idx, 0, b);
+  }
+  // joriy..idx-1 qadamlar hozir yakunlandi deb yoziladi
+  const hozir = new Date().toISOString();
+  const yakunlangan = idx > v.joriy ? reja.slice(v.joriy, idx).map((m) => ({ matn: m, vaqt: hozir })) : [];
+  await q(
     `update agent_vazifalar
-       set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', $2::text, 'vaqt', now())),
-           taxmin_daq = coalesce($3, taxmin_daq), updated_at = now()
-     where id = $1 and holat = 'ishlanmoqda' returning id`,
-    [id, bosqich.slice(0, 120), taxminDaq ?? null],
-  ))[0];
-  if (!r) throw new Error("vazifa ishlanmoqda holatida emas");
+       set reja = $2::jsonb, joriy = $3, qadamlar = qadamlar || $4::jsonb,
+           taxmin_daq = coalesce($5, taxmin_daq), updated_at = now()
+     where id = $1`,
+    [id, JSON.stringify(reja), idx, JSON.stringify(yakunlangan), taxminDaq ?? null],
+  );
   await holatXabariniYangila(id);
-  return { ok: true };
+  await panelYangila();
+  return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
 type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string };
@@ -345,7 +466,8 @@ type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" |
 export async function apiNatija(id: number, n: Natija) {
   const v = (await q(`select id, buyruq, izohlar from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
-  await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', 'Natija yuborildi', 'vaqt', now())) where id = $1`, [id]);
+  await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
+                  joriy = jsonb_array_length(reja) where id = $1`, [id]);
   await holatXabariniYangila(id, "tayyor");
   const sarlavha = `🤖 <b>#${id} tayyor</b> · <i>${esc(String(v.buyruq).slice(0, 80))}</i>`;
   const tana = esc(n.matn ?? "");
@@ -366,6 +488,7 @@ export async function apiNatija(id: number, n: Natija) {
     msgId = (await yubor(egasi(), `${sarlavha}\n\n${tana.slice(0, 3800)}${izoh}`, kb)).message_id;
   }
   await q(`update agent_vazifalar set holat = 'tasdiq', natija = $2::jsonb, tg_msg = $3, updated_at = now() where id = $1`, [id, JSON.stringify(n), msgId]);
+  await panelYangila();
   return { tg_msg: msgId };
 }
 
@@ -376,11 +499,13 @@ export async function apiHolat(id: number, holat: string, izoh?: string) {
   if (izoh || holat === "joylandi" || holat === "xato") {
     await yubor(egasi(), `${HOLAT_BELGI[holat]} · <b>#${id}</b>\n<i>${esc(String(v.buyruq).slice(0, 80))}</i>${izoh ? `\n\n${esc(izoh)}` : ""}`);
   }
+  await panelYangila();
   return { ok: true };
 }
 
 export async function apiYangi(b: { loyiha?: string; tur?: string; buyruq: string; ota_id?: number; taxmin_daq?: number }) {
   const id = await vazifaYarat(b.loyiha ?? "productcrm", b.tur ?? "kontent", b.buyruq, b.ota_id, b.taxmin_daq);
+  await panelYangila();
   return { id };
 }
 

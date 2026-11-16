@@ -8,7 +8,7 @@ import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, type Klav
 import { arxivga, arxivChat, arxivdanYubor, type Bolim, type ArxivFayl } from "./arxiv";
 import { qisqa, toliq } from "./ids";
 import { sttBor, transkripsiya } from "./stt";
-import { kontentBuyrugi, navbatXabari, agentJavobi, agentTugmasi } from "./agent";
+import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila } from "./agent";
 
 const MAKS_YUKLAB_OLISH = 20 * 1024 * 1024;
 
@@ -312,7 +312,7 @@ export async function xabarKeldi(m: any) {
     const arg = tugma ? "" : qolgan.join(" ").trim();
     if (cmd === "start" || cmd === "yordam" || cmd === "help") return tg("sendMessage", { chat_id: chatId, text: YORDAM, parse_mode: "HTML", reply_markup: MENYU });
     if (cmd === "kontent" || cmd === "k") return kontentBuyrugi(chatId, arg, m.message_id);
-    if (cmd === "agent") { const x = await navbatXabari(); return yubor(chatId, x.text, x.kb); }
+    if (cmd === "agent") return panelYangila(true);
     if (cmd === "ilova") return yubor(chatId, "📱 <b>Personal OS</b>\nBugun, Kalendar, Sohalar va Inbox — hammasi bir joyda.", [[ilova()]]);
     if (cmd === "qidir" && !arg) return tg("sendMessage", { chat_id: chatId, text: "🔍 Nimani qidiramiz? Shu xabarga javob qilib so'z yozing.", reply_markup: { force_reply: true, input_field_placeholder: "Qidiruv so'zi" } });
     await yozmoqda(chatId);

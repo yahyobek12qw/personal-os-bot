@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = Number(b.id);
     switch (b.amal) {
       case "ol":
-        return res.status(200).json({ olindi: await apiOl(id, b.taxmin_daq ? Number(b.taxmin_daq) : undefined) });
+        return res.status(200).json({ olindi: await apiOl(id, b.taxmin_daq ? Number(b.taxmin_daq) : undefined, Array.isArray(b.reja) ? b.reja : undefined) });
       case "jarayon":
         return res.status(200).json(await apiJarayon(id, String(b.bosqich ?? ""), b.taxmin_daq ? Number(b.taxmin_daq) : undefined));
       case "natija":
