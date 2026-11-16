@@ -143,7 +143,12 @@ export async function savolEslatma() {
 
 // ---------- Buyruqlar: /guruh va /faq ----------
 export async function guruhBuyrugi(chatId: number | string) {
-  const g = await guruh();
+  let g = await guruh();
+  if (g) { // nom va username'ni yangilash (bot qo'shilgandan keyin)
+    const c = await tg("getChat", { chat_id: g.id }).catch(() => null);
+    if (c) { g = { id: g.id, nom: c.title ?? g.nom, username: c.username ?? null };
+      await q(`update agent_sozlama set qiymat = $1::jsonb where kalit = 'tg_guruh'`, [JSON.stringify(g)]); }
+  }
   if (!g) return yubor(chatId, "👥 <b>Guruh topilmadi.</b>\nKanal sozlamalari → Discussion (Muhokama) → guruhni bog‘lang, botni guruhga <b>admin</b> qiling, keyin /guruh ni qayta yozing.");
   const a = await tg("getChatMember", { chat_id: g.id, user_id: botId() }).catch(() => null);
   const admin = a?.status === "administrator";
