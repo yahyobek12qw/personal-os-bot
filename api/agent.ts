@@ -23,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("X-Jami", String(f.jami)); res.setHeader("X-Bo", String(f.bo)); res.setHeader("X-Oxir", String(f.oxir)); res.setHeader("X-Nom", f.nom ?? "fayl");
       return res.status(200).send(f.data);
     }
-    if (req.method === "GET") { const vazifalar = await apiNavbat(); return res.status(200).json({ vazifalar, ...(vazifalar.length ? await apiKontekst() : {}) }); }
+    if (req.method === "GET") { const vazifalar = await apiNavbat(); return res.status(200).json({ vazifalar, ...(vazifalar.length || req.query.kontekst ? await apiKontekst() : {}) }); }
     if (req.method !== "POST") return res.status(405).json({ xato: "method" });
     const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body ?? {};
     const id = Number(b.id);

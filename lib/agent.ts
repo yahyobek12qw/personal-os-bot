@@ -117,13 +117,25 @@ export async function kunlikYoq(yoqilgan: boolean) {
   return { yoqilgan };
 }
 // Har kuni 06:00 dan keyin birinchi tekshiruvda: akkaunt hisoboti + 1 ta video (boshidan oxirigacha)
+// ---------- Kuniga faqat 1 ta video: video/kunlik vazifa uchun birinchi bo'sh kun ----------
+export const bugunTosh = () => new Date(Date.now() + TASHKENT_MS).toISOString().slice(0, 10);
+async function videoKuni(): Promise<string> {
+  const band = new Set((await q(`select to_char(kun,'YYYY-MM-DD') k from agent_vazifalar
+    where tur in ('video','kunlik') and kun >= $1::date and holat not in ('rad','xato')`, [bugunTosh()])).map((r: any) => r.k));
+  const d = new Date(bugunTosh() + "T00:00:00Z");
+  while (band.has(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+export const sanaMatni = (k: string) => { const [, m, d] = k.split("-"); return `${+d}.${m}`; };
 async function kunlikYarat() {
   if (!(await kunlikHolati())) return;
   const t = new Date(Date.now() + TASHKENT_MS);
   if (t.getUTCHours() < 6) return;
   const kun = t.toISOString().slice(0, 10);
-  const bor = await q(`select tur from agent_vazifalar where kun = $1`, [kun]);
+  const bor = await q(`select tur, holat from agent_vazifalar where kun = $1`, [kun]);
   const turlar = new Set(bor.map((r: any) => r.tur));
+  // Bugunga boshqa video allaqachon rejalangan bo'lsa — kunlik video yaratilmaydi (kuniga 1 ta)
+  if (bor.some((r: any) => r.tur === "video" && !["rad", "xato"].includes(r.holat))) turlar.add("kunlik");
   if (!turlar.has("hisobot"))
     await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'hisobot', $1, $2, 10)`,
       [`Kunlik akkaunt hisoboti — ${kun}`, kun]);
@@ -134,9 +146,10 @@ async function kunlikYarat() {
 
 async function vazifaYarat(loyiha: string, tur: string, buyruq: string, otaId?: number, taxmin?: number) {
   await jadvalTayyorla();
+  const kun = tur === "video" || tur === "kunlik" ? await videoKuni() : null;
   const r = (await q(
-    `insert into agent_vazifalar (loyiha, tur, buyruq, ota_id, taxmin_daq) values ($1, $2, $3, $4, $5) returning id`,
-    [loyiha, tur, buyruq, otaId ?? null, taxmin ?? taxminiyVaqt(buyruq)],
+    `insert into agent_vazifalar (loyiha, tur, buyruq, ota_id, taxmin_daq, kun) values ($1, $2, $3, $4, $5, $6) returning id`,
+    [loyiha, tur, buyruq, otaId ?? null, taxmin ?? taxminiyVaqt(buyruq), kun],
   ))[0];
   return r.id as number;
 }
@@ -316,8 +329,11 @@ export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz",
     } else {
       await q(`update agent_vazifalar set holat = 'bajarildi', updated_at = now() where id = $1`, [id]);
       yangiId = await vazifaYarat(v.loyiha, "video", `Video: #${id} ssenariysi bo‘yicha Reels (1080×1920)`, id, 45);
+      const vk = String((await q(`select to_char(kun,'YYYY-MM-DD') k from agent_vazifalar where id = $1`, [yangiId]))[0]?.k ?? bugunTosh());
       matn = `${bosh}\n✅ Ssenariy tasdiqlandi.` + keyingiQadamlar([
-        `🎬 Video yasash — <b>#${yangiId}</b> navbatga qo‘shildi (~45 daq)`,
+        vk > bugunTosh()
+          ? `🎬 Video — <b>#${yangiId}</b>. Bugungi video o‘rni band (kuniga 1 ta), shuning uchun <b>${sanaMatni(vk)}</b> kuni yasaladi`
+          : `🎬 Video yasash — <b>#${yangiId}</b> navbatga qo‘shildi (~45 daq)`,
         "👀 Tayyor videoni shu yerga yuboraman — siz tasdiqlaysiz",
         "🚀 Tasdiqdan keyin Instagram va Telegram kanalga joylanadi",
       ]);
@@ -385,8 +401,8 @@ export async function apiNavbat() {
     `select v.id, v.loyiha, v.tur, v.buyruq, v.holat, v.natija, v.izohlar, v.urinish, v.ota_id, o.natija ota_natija,
             to_char(v.created_at at time zone 'Asia/Tashkent','YYYY-MM-DD HH24:MI') yaratilgan
      from agent_vazifalar v left join agent_vazifalar o on o.id = v.ota_id
-     where v.holat in ('navbatda','tasdiqlandi')
-     order by case v.tur when 'hisobot' then 0 when 'tahlil' then 1 else 2 end, v.id`,
+     where v.holat in ('navbatda','tasdiqlandi') and (v.kun is null or v.kun <= $1::date)
+     order by case v.tur when 'hisobot' then 0 when 'tahlil' then 1 else 2 end, v.id`, [bugunTosh()],
   );
 }
 // ---------- Faollik: dispetcher har GET'da "yurak urishi"ni yozadi ----------
@@ -400,7 +416,7 @@ async function yurakUrdi() {
 async function tiqilganlarniOgohlantir() {
   const rows = await q(`select id, tur, buyruq from agent_vazifalar
     where holat = 'navbatda' and tur in ('kunlik','video','kontent','tahlil')
-      and created_at < now() - interval '90 minutes' and not (coalesce(natija,'{}'::jsonb) ? 'ogohlantirildi') limit 3`);
+      and greatest(created_at, coalesce((kun::timestamp + interval '6 hours 45 minutes') at time zone 'Asia/Tashkent', created_at)) < now() - interval '90 minutes' and not (coalesce(natija,'{}'::jsonb) ? 'ogohlantirildi') limit 3`);
   for (const r of rows) {
     await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || '{"ogohlantirildi":true}'::jsonb where id = $1`, [r.id]);
     await yubor(egasi(), `⚠️ <b>#${r.id} 1.5 soatdan beri olinmadi</b>\n<i>${esc(String(r.buyruq).slice(0, 80))}</i>\n\n${r.tur === "kunlik" || r.tur === "video" ? "Opus" : "Sonnet"} ishchisi ishga tushmadi. Ko‘pincha sabab — Claude limiti tugagan. Limit tiklanganda agent o‘zi davom etadi. Aniq limit: Claude → Settings → Usage.`);
@@ -413,7 +429,7 @@ export async function faollik() {
       coalesce(sum(extract(epoch from (updated_at - boshlangan)) / 60) filter (where boshlangan is not null and holat <> 'ishlanmoqda'), 0)::int daqiqa
     from agent_vazifalar where boshlangan > (now() at time zone 'Asia/Tashkent')::date at time zone 'Asia/Tashkent' group by 1 order by 2 desc`);
   const hafta = await q(`select coalesce(model,'—') model, count(*)::int soni from agent_vazifalar where boshlangan > now() - interval '7 days' group by 1`);
-  const tiqilgan = (await q(`select count(*)::int n from agent_vazifalar where holat = 'navbatda' and created_at < now() - interval '90 minutes' and tur in ('kunlik','video','kontent','tahlil')`))[0].n;
+  const tiqilgan = (await q(`select count(*)::int n from agent_vazifalar where holat = 'navbatda' and greatest(created_at, coalesce((kun::timestamp + interval '6 hours 45 minutes') at time zone 'Asia/Tashkent', created_at)) < now() - interval '90 minutes' and tur in ('kunlik','video','kontent','tahlil')`))[0].n;
   const xato = (await q(`select count(*)::int n from agent_vazifalar where holat = 'xato' and updated_at > now() - interval '24 hours'`))[0].n;
   const t = new Date(Date.now() + TASHKENT_MS); const soat = t.getUTCHours() + t.getUTCMinutes() / 60;
   const faolVaqt = soat >= 6.75 && soat <= 23;
@@ -551,7 +567,7 @@ export async function ilovaMalumoti() {
   await jadvalTayyorla();
   const rows = await q(
     `select id, loyiha, tur, buyruq, holat, natija, izohlar, reja, joriy, qadamlar, taxmin_daq, ota_id, model,
-            boshlangan, created_at, updated_at
+            boshlangan, created_at, updated_at, to_char(kun,'YYYY-MM-DD') kun
      from agent_vazifalar order by id desc limit 40`,
   );
   const k = keyingiTekshiruv();
@@ -560,6 +576,7 @@ export async function ilovaMalumoti() {
     keyingi: { vaqt: k.vaqt, ertaga: k.ertaga, qoldi: k.qoldi },
     jadval: JADVAL,
     kunlik: await kunlikHolati(),
+    bugun: bugunTosh(),
     vazifalar: rows.map((r) => ({
       ...r,
       otdi: r.boshlangan ? Math.max(0, Math.round((Date.now() - Date.parse(r.boshlangan)) / 60000)) : null,
