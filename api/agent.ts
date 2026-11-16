@@ -7,6 +7,7 @@ import { tgHavola } from "../lib/havolalar";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
 import { savolEslatma, guruh, faqBirlashtir, testYoq } from "../lib/guruh";
+import { agentIshlari, agentTugun, agentTugunYangi, agentBuyruqOqildi } from "../lib/studio";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -19,6 +20,7 @@ const AGENT_BUYRUQLAR = [
   { command: "kanal", description: "📢 Telegram kanal holati" },
   { command: "guruh", description: "👥 Muhokama guruhi holati" },
   { command: "faq", description: "📚 Guruhdagi bot javoblari (FAQ)" },
+  { command: "studio", description: "🎛 Kontent Studio — cheksiz doska" },
 ];
 import { jadvalTayyorla, apiKontekst, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
@@ -48,6 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ guruh: g, bot: a ? { status: (a as any).status, xato: (a as any).xato ?? null, ochira_oladi: (a as any).can_delete_messages ?? null } : null });
     }
     if (req.method === "GET" && req.query.rasm) return res.status(200).json(await rasmTekshir());
+    // Kontent Studio: ishi bor loyihalar (tugunlar, izohlar, buyruqlar)
+    if (req.method === "GET" && req.query.studio) return res.status(200).json(await agentIshlari(req.query.loyiha ? Number(req.query.loyiha) : undefined));
     if (req.method === "GET" && req.query.buyruqlar) {
       // Bot menyusi: mavjud buyruqlarni o'qiydi; "yangila" bo'lsa agent buyruqlarini qo'shadi
       // Buyruqlar faqat egasining chatida ko'rinadi (scope: chat)
@@ -112,6 +116,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         for (const m of ids) await tg("deleteMessage", { chat_id: k.id, message_id: m });
         return res.status(200).json({ ok: true, ochirildi: ids });
       }
+      case "tugun":
+        return res.status(200).json(await agentTugun(b));
+      case "tugun_yangi":
+        return res.status(200).json(await agentTugunYangi(b));
+      case "studio_buyruq":
+        return res.status(200).json(await agentBuyruqOqildi(Number(b.loyiha_id)));
       case "holat":
         return res.status(200).json(await apiHolat(id, String(b.holat), b.izoh, b.havola, Boolean(b.jim)));
       case "yangi":
@@ -129,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case "xabar":
         return res.status(200).json(await apiXabar(String(b.matn ?? "")));
       default:
-        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | yangi | kanal | taklif | xabar" });
+        return res.status(400).json({ xato: "amal: ol | jarayon | natija | holat | yangi | kanal | taklif | xabar | tugun | tugun_yangi | studio_buyruq" });
     }
   } catch (e) {
     console.error(e);

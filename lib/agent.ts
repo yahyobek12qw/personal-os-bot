@@ -95,7 +95,7 @@ export function buyruqniAjrat(arg: string): { loyiha: string; buyruq: string } {
   return { loyiha: l.startsWith("edu") ? "eduflow" : "productcrm", buyruq: m[2].trim() };
 }
 
-export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", rasmpost: "Rasmli post", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob" };
+export const TUR_NOM: Record<string, string> = { kontent: "Kontent", video: "Video", kunlik: "Kunlik video", rasmpost: "Rasmli post", hisobot: "Akkaunt hisoboti", tahlil: "Tahlil", post: "Post", izoh: "Izohga javob", studio: "Studio" };
 export async function navbatgaQosh(arg: string, turMajburiy?: string) {
   await jadvalTayyorla();
   const { loyiha, buyruq } = buyruqniAjrat(arg);
@@ -148,6 +148,10 @@ async function kunlikYarat() {
   const turlar = new Set(bor.map((r: any) => r.tur));
   // Bugunga boshqa video allaqachon rejalangan bo'lsa — kunlik video yaratilmaydi (kuniga 1 ta)
   if (bor.some((r: any) => r.tur === "video" && !["rad", "xato"].includes(r.holat))) turlar.add("kunlik");
+  // Kontent Studio'da faol video bor bo'lsa — kunlik video yaratilmaydi (studio videosi kunning videosi)
+  const studio = (await q(`select to_regclass('studio_loyiha') is not null t`))[0]?.t
+    && (await q(`select exists (select 1 from studio_loyiha where holat = 'faol') b`))[0]?.b;
+  if (studio) turlar.add("kunlik");
   if (!turlar.has("hisobot"))
     await q(`insert into agent_vazifalar (loyiha, tur, buyruq, kun, taxmin_daq) values ('productcrm', 'hisobot', $1, $2, 10)`,
       [`Kunlik akkaunt hisoboti — ${kun}`, kun]);
@@ -500,6 +504,7 @@ export async function apiKontekst() {
 
 // Tur bo'yicha standart reja (agent `ol` da o'z rejasini yuborishi ham mumkin)
 export function standartReja(tur: string, buyruq: string): string[] {
+  if (tur === "studio") return ["Doskani o'qish", "Tugunlarni bajarish", "Tekshiruvga yuborish"];
   if (tur === "hisobot") return ["Instagram statistikasini yig'ish", "Kechagi kun bilan solishtirish", "Tavsiyalar", "Hisobotni yuborish"];
   if (tur === "tahlil") return ["Ma'lumot yig'ish (research)", "Tahlil", "Xulosa va tavsiyalar", "Natijani yuborish"];
   if (tur === "rasmpost") return ["Bilim, tarix va statistikani o'qish", "Mavzu va format tanlash", "Slaydlar matni", "Dizayn va render (1080×1350)", "Instagram caption va Telegram matni", "Tekshiruv", "Natijani yuborish"];

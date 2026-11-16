@@ -1,10 +1,22 @@
 {
   "functions": {
-    "api/telegram.ts": { "maxDuration": 60 },
-    "api/v2.ts": { "maxDuration": 60 },
-    "api/agent.ts": { "maxDuration": 60 }
+    "api/telegram.ts": {
+      "maxDuration": 60
+    },
+    "api/v2.ts": {
+      "maxDuration": 60
+    },
+    "api/agent.ts": {
+      "maxDuration": 60
+    },
+    "api/studio.ts": {
+      "maxDuration": 60
+    }
   },
   "crons": [
-    { "path": "/api/cron", "schedule": "0 14 * * *" }
+    {
+      "path": "/api/cron",
+      "schedule": "0 14 * * *"
+    }
   ]
 }

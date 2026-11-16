@@ -11,6 +11,7 @@ import { sttBor, transkripsiya } from "./stt";
 import { guruhJavobi, guruhTugmasi, guruhBuyrugi, faqBuyrugi } from "./guruh";
 import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila, tahlilBuyrugi, kunlikBuyrugi, rasmpostBuyrugi } from "./agent";
 import { postYarat, kanalBuyrugi } from "./agent2";
+import { studioHavola, STUDIO_URL } from "./auth";
 
 const MAKS_YUKLAB_OLISH = 20 * 1024 * 1024;
 
@@ -135,6 +136,7 @@ export const YORDAM = [
   "🔎 <code>/tahlil savol</code> — research va tahlil · 📅 /kunlik — har kuni hisobot + 1 video",
   "🖼 <code>/rasmpost mavzu</code> — agent karusel/rasm post tayyorlaydi (Instagram + Telegram)",
   "📤 /post — o'z rasm/videongizni joylash · 📢 /kanal — Telegram kanalni ulash",
+  "🎛 /studio — Kontent Studio: ssenariydan relizgacha cheksiz doska (kompyuter va planshet)",
 ].join("\n");
 
 const qatorEl = (x: any) => `${x.holat === "bajarildi" ? "✅" : x.tur === "vazifa" || x.tur === "qadam" ? "▫️" : TUR_BELGI[x.tur] ?? "•"} ${x.vaqt ? `<b>${x.vaqt}</b> ` : ""}${x.holat === "bajarildi" ? `<s>${esc(x.nom)}</s>` : esc(x.nom)}`;
@@ -329,6 +331,7 @@ export async function xabarKeldi(m: any) {
     if (cmd === "faq") return faqBuyrugi(chatId, arg);
     if (cmd === "post") return yubor(chatId, "📤 <b>Post joylash</b>\nRasm yoki videoni yuboring va izohiga (caption) <code>/post</code> dan keyin matnni yozing:\n<code>/post Tikuvxonangiz uchun yangi imkoniyat…</code>\nMen ko'rsataman, siz ✅ bosasiz — agent Instagram'ga (va ulangan bo'lsa kanalga) joylaydi.");
     if (cmd === "agent") return panelYangila(true);
+    if (cmd === "studio") return yubor(chatId, "🎛 <b>Kontent Studio</b>\nSsenariydan relizgacha — bitta cheksiz doskada. Kompyuter yoki planshet brauzerida oching (havola 30 kun amal qiladi).", [[{ text: "🖥 Brauzerda ochish", url: studioHavola() }], [{ text: "📱 Telegram ichida", web_app: { url: STUDIO_URL } }]]);
     if (cmd === "ilova") return yubor(chatId, "📱 <b>Personal OS</b>\nBugun, Kalendar, Sohalar va Inbox — hammasi bir joyda.", [[ilova()]]);
     if (cmd === "qidir" && !arg) return tg("sendMessage", { chat_id: chatId, text: "🔍 Nimani qidiramiz? Shu xabarga javob qilib so'z yozing.", reply_markup: { force_reply: true, input_field_placeholder: "Qidiruv so'zi" } });
     await yozmoqda(chatId);
