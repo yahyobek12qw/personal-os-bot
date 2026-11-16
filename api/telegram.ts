@@ -3,6 +3,7 @@ import { yubor, esc, tg } from "../lib/telegram";
 import { arxivChat } from "../lib/arxiv";
 import { xabarKeldi, tugmaBosildi } from "../lib/bot2";
 import { kanalUlash } from "../lib/agent2";
+import { guruhXabari } from "../lib/guruh";
 import { javob } from "../lib/telegram";
 
 // Personal OS 2.0 bot: ma'lumotlar Neon bazasida (lib/bot2.ts). Eski Notion versiyasi: git tarixida.
@@ -27,6 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (String(m.chat.id) === egasi) await xabarKeldi(m);
       } else if (String(m.from?.id) === egasi && /^\/ulash(@\w+)?(\s|$)/i.test(m.text ?? "")) {
         await guruhniUlash(m);
+      } else {
+        await guruhXabari(m).catch((e) => console.error("guruh", e));
       }
     }
   } catch (e) {

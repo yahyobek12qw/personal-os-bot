@@ -8,6 +8,7 @@ import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, type Klav
 import { arxivga, arxivChat, arxivdanYubor, type Bolim, type ArxivFayl } from "./arxiv";
 import { qisqa, toliq } from "./ids";
 import { sttBor, transkripsiya } from "./stt";
+import { guruhJavobi, guruhTugmasi, guruhBuyrugi, faqBuyrugi } from "./guruh";
 import { kontentBuyrugi, agentJavobi, agentTugmasi, panelYangila, tahlilBuyrugi, kunlikBuyrugi, rasmpostBuyrugi } from "./agent";
 import { postYarat, kanalBuyrugi } from "./agent2";
 
@@ -285,6 +286,7 @@ export async function xabarKeldi(m: any) {
   if (media && /^\/post(@\w+)?(\s|$)/i.test(matn)) return postYarat(m, { fileId: media.fileId, tur: media.tur, size: media.size }, matn.replace(/^\/post(@\w+)?\s*/i, "").trim());
 
   // ----- Kontent agenti: force-reply javoblari -----
+  if (!media && (await guruhJavobi(m))) return;
   if (!media && (await agentJavobi(m))) return;
 
   // ----- Kartochkaga javob: fayl biriktirish yoki qaydga yozish -----
@@ -323,6 +325,8 @@ export async function xabarKeldi(m: any) {
     if (cmd === "rasmpost" || cmd === "karusel") return rasmpostBuyrugi(chatId, arg, m.message_id);
     if (cmd === "kunlik") return kunlikBuyrugi(chatId);
     if (cmd === "kanal") return kanalBuyrugi(chatId);
+    if (cmd === "guruh") return guruhBuyrugi(chatId);
+    if (cmd === "faq") return faqBuyrugi(chatId, arg);
     if (cmd === "post") return yubor(chatId, "📤 <b>Post joylash</b>\nRasm yoki videoni yuboring va izohiga (caption) <code>/post</code> dan keyin matnni yozing:\n<code>/post Tikuvxonangiz uchun yangi imkoniyat…</code>\nMen ko'rsataman, siz ✅ bosasiz — agent Instagram'ga (va ulangan bo'lsa kanalga) joylaydi.");
     if (cmd === "agent") return panelYangila(true);
     if (cmd === "ilova") return yubor(chatId, "📱 <b>Personal OS</b>\nBugun, Kalendar, Sohalar va Inbox — hammasi bir joyda.", [[ilova()]]);
@@ -377,6 +381,7 @@ export async function xabarKeldi(m: any) {
 // ======================= Tugmalar =======================
 
 export async function tugmaBosildi(cq: any) {
+  if (await guruhTugmasi(cq)) return;
   if (await agentTugmasi(cq)) return;
   const chatId = cq.message?.chat?.id;
   const msgId = cq.message?.message_id;

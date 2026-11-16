@@ -4,6 +4,7 @@ import { kanalgaJoyla, apiTaklif, faylBolak } from "../lib/agent2";
 import { tg } from "../lib/telegram";
 import { q } from "../lib/db";
 import { rasmYasa, rasmTekshir } from "../lib/rasm";
+import { savolEslatma } from "../lib/guruh";
 
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
@@ -14,6 +15,8 @@ const AGENT_BUYRUQLAR = [
   { command: "kunlik", description: "📅 Kunlik rejim: hisobot + 1 video" },
   { command: "post", description: "📤 O‘z rasm/videoingizni joylash" },
   { command: "kanal", description: "📢 Telegram kanal holati" },
+  { command: "guruh", description: "👥 Muhokama guruhi holati" },
+  { command: "faq", description: "📚 Guruhdagi bot javoblari (FAQ)" },
 ];
 import { jadvalTayyorla, apiKontekst, apiNavbat, apiOl, apiJarayon, apiNatija, apiHolat, apiXabar, apiYangi } from "../lib/agent";
 
@@ -58,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       return res.status(200).json({ allowed_updates: au, pending: w?.pending_update_count, oxirgi_xato: w?.last_error_message ?? null, tuzatildi });
     }
-    if (req.method === "GET") { const vazifalar = await apiNavbat(); return res.status(200).json({ vazifalar, ...(vazifalar.length || req.query.kontekst ? await apiKontekst() : {}) }); }
+    if (req.method === "GET") { await savolEslatma().catch((e) => console.error("eslatma", e)); const vazifalar = await apiNavbat(); return res.status(200).json({ vazifalar, ...(vazifalar.length || req.query.kontekst ? await apiKontekst() : {}) }); }
     if (req.method !== "POST") return res.status(405).json({ xato: "method" });
     const b = typeof req.body === "string" ? JSON.parse(req.body) : req.body ?? {};
     const id = Number(b.id);
