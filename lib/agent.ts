@@ -6,6 +6,7 @@ import { igHavola, tgHavola } from "./havolalar";
 //   ❌ Yo'q → rad
 
 import { q } from "./db";
+import { claudeChaqir, chaqiruvBor } from "./chaqir";
 import { serverdaJoyla, mediaBor, rejalanganlarniYakunla } from "./agent2";
 import { zernioBor } from "./zernio";
 import { tg, yubor, javob, esc, ILOVA_URL, type Klaviatura } from "./telegram";
@@ -43,10 +44,8 @@ export function keyingiTekshiruv(hozir = Date.now()) {
 }
 export const davomiylik = (daq: number) => (daq < 60 ? `${daq} daq` : `${Math.floor(daq / 60)} soat${daq % 60 ? ` ${daq % 60} daq` : ""}`);
 export const keyingiMatnOchiq = () => keyingiMatn();
-const keyingiMatn = () => {
-  const k = keyingiTekshiruv();
-  return `${k.ertaga ? "ertaga" : "bugun"} ${k.vaqt} (${davomiylik(k.qoldi)}dan keyin)`;
-};
+// Agentlar soatlik jadvalda ishlamaydi (egasi qarori, 2026-11-20): vazifa tushganda Claude chaqiriladi
+const keyingiMatn = () => (chaqiruvBor() ? "darhol — Claude chaqirildi" : "Claude ilovasida «Agent dispetcher» → «Run now» bosilganda");
 // Buyruqqa qarab taxminiy ish vaqti (daqiqa)
 export function taxminiyVaqt(buyruq: string) {
   const b = buyruq.toLowerCase();
@@ -102,11 +101,14 @@ export async function navbatgaQosh(arg: string, turMajburiy?: string) {
   const tur = turMajburiy ?? (/^(tahlil|research|analiz)\s*:/i.test(buyruq) ? "tahlil" : /^(rasmli\s*)?post\s*:/i.test(buyruq) ? "rasmpost" : "kontent");
   const r = (await q(`insert into agent_vazifalar (loyiha, tur, buyruq, taxmin_daq) values ($1, $2, $3, $4) returning id`,
     [loyiha, tur, buyruq, tur === "tahlil" ? 15 : tur === "rasmpost" ? 20 : taxminiyVaqt(buyruq)]))[0];
+  await claudeChaqir(`navbat ${tur}`);
   return { id: r.id as number, loyiha, buyruq, tur };
 }
 
 // ======================= Kunlik rejim =======================
 export async function kunlikHolati(): Promise<boolean> {
+  // Avtomatik kunlik vazifalar o'chirilgan (egasi: agentlar faqat chaqirilganda ishlasin). Qaytarish: KUNLIK_AVTO=1
+  if (process.env.KUNLIK_AVTO !== "1") return false;
   const s = (await q(`select qiymat from agent_sozlama where kalit = 'kunlik'`))[0];
   return s ? Boolean(s.qiymat?.yoqilgan) : true; // standart: yoqilgan
 }
@@ -172,6 +174,7 @@ async function vazifaYarat(loyiha: string, tur: string, buyruq: string, otaId?: 
     `insert into agent_vazifalar (loyiha, tur, buyruq, ota_id, taxmin_daq, kun) values ($1, $2, $3, $4, $5, $6) returning id`,
     [loyiha, tur, buyruq, otaId ?? null, taxmin ?? taxminiyVaqt(buyruq), kun],
   ))[0];
+  await claudeChaqir(`yangi ${tur}`);
   return r.id as number;
 }
 
@@ -226,7 +229,7 @@ export async function kunlikBuyrugi(chatId: number | string) {
   const on = await kunlikHolati();
   return yubor(chatId, [
     `📅 <b>Kunlik rejim: ${on ? "yoqilgan" : "o'chirilgan"}</b>`,
-    "Har kuni 06:45 da agent:",
+    process.env.KUNLIK_AVTO === "1" ? "Har kuni 06:45 da agent:" : "Hozir o‘chirilgan: agentlar faqat siz buyurganda ishlaydi. Yoqilsa, har kuni:",
     "1. 📊 Instagram akkaunt hisobotini yuboradi (tasdiqsiz)",
     "2. 🎬 1 ta video tayyorlaydi: research → g‘oya → ssenariy → video (kuniga faqat 1 ta)",
     `3. 🖼 Post kunlari (${(await postKunlari()).map((k) => ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"][k - 1]).join(", ") || "yo‘q"}): rasmli post — karusel yoki rasm`,
@@ -362,10 +365,12 @@ export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz",
       Object.assign(qoshimcha, v.tur === "post" ? { caption: izoh.trim(), matn: izoh.trim() } : { javob: izoh.trim(), matn: izoh.trim() });
     }
     await q(`update agent_vazifalar set holat = 'tasdiqlandi', natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(qoshimcha)]);
+    await claudeChaqir("tasdiq");
     matn = `${bosh}\n✅ ${amal === "oz" ? "Yangi matn bilan tasdiqlandi" : "Tasdiqlandi"}${v.tur === "post" ? (amal === "hv" ? " · eng yaxshi vaqtga rejalanadi" : " · hozir joylanadi") : " · javob yuboriladi"}.\n⏰ Agent: ${keyingiMatn()}`;
   } else if (amal === "ha" || amal === "hv") {
     if (v.natija?.media_url || v.natija?.media_urls?.length) {
       await q(`update agent_vazifalar set holat = 'tasdiqlandi', natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify({ vaqt: amal === "hv" ? "eng_yaxshi" : "hozir" })]);
+      await claudeChaqir("tasdiq");
       matn = `${bosh}\n✅ Tasdiqlandi.` + keyingiQadamlar(["🚀 Instagram (Zernio) va ulangan bo‘lsa Telegram kanalga joylash", "🔗 Joylangach havolani shu yerga yuboraman"]);
     } else {
       await q(`update agent_vazifalar set holat = 'bajarildi', updated_at = now() where id = $1`, [id]);
@@ -400,6 +405,7 @@ export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz",
        where id = $1`,
       [id, izoh.trim()],
     );
+    await claudeChaqir("ozgartir");
     matn = `✏️ ${bosh}\nIzoh bilan navbatga qaytdi: <i>${esc(izoh.trim())}</i>\n\n⏰ Keyingi tekshiruv: ${keyingiMatn()}`;
   }
   if (v.tg_msg) await tg("editMessageReplyMarkup", { chat_id: egasi(), message_id: v.tg_msg, reply_markup: { inline_keyboard: [] } }).catch(() => {});
