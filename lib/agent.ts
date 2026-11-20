@@ -83,6 +83,8 @@ export async function jadvalTayyorla() {
     add column if not exists kun date,
     add column if not exists model text`);
   await q(`create table if not exists agent_sozlama (kalit text primary key, qiymat jsonb)`);
+  await q(`alter table agent_vazifalar add column if not exists brend_id integer`);
+  await q(`create table if not exists brendlar (id serial primary key, nom text not null, rang text not null default 'loy', zernio jsonb, tartib integer not null default 0, created_at timestamptz not null default now())`);
   tayyor = true;
 }
 
@@ -260,10 +262,13 @@ export async function navbatXabari(): Promise<{ text: string; kb: Klaviatura }> 
   return { text: t.join("\n"), kb: [[{ text: "🔄 Yangilash", callback_data: "ag:ls" }]] };
 }
 
+// Joylash — Studiya OS'da: egasi loyiha (Zernio akkaunti), akkauntlar, matn va vaqtni o'zi tanlaydi.
+// Bot endi o'zi joylamaydi: aks holda har qanday video bitta (product CRM) akkauntiga ketardi.
+export const SOS_URL = "https://studiya-os.vercel.app/";
+const joylaTugma = (id: number) => ({ text: "📤 Joylash — loyiha va akkaunt", web_app: { url: `${SOS_URL}#/joyla/${id}` } });
 const tasdiqTugmalari = (id: number, media = false): Klaviatura => media ? [
-  [{ text: "🚀 Hozir joylash", callback_data: `ag:ha:${id}` }, { text: "🕐 Eng yaxshi vaqtda", callback_data: `ag:hv:${id}` }],
-  [{ text: "⏰ Vaqt tanlash", web_app: { url: `${ILOVA_URL}#agent` } }, { text: "✏️ O'zgartir", callback_data: `ag:oz:${id}` }],
-  [{ text: "❌ Yo'q", callback_data: `ag:yoq:${id}` }],
+  [joylaTugma(id)],
+  [{ text: "✏️ O'zgartir", callback_data: `ag:oz:${id}` }, { text: "❌ Yo'q", callback_data: `ag:yoq:${id}` }],
 ] : [
   [
     { text: "✅ Ha", callback_data: `ag:ha:${id}` },
@@ -347,8 +352,13 @@ export async function qaror(id: number, amal: "ha" | "hv" | "vq" | "yoq" | "oz",
   const v = (await q(`select id, holat, buyruq, loyiha, tur, natija, tg_msg from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("Vazifa topilmadi");
   if (v.holat !== "tasdiq") throw new Error(`Holati: ${HOLAT_BELGI[v.holat] ?? v.holat}`);
-  // Media tayyor va Zernio kaliti bor — server darhol joylaydi yoki rejalaydi
-  if ((amal === "ha" || amal === "hv" || amal === "vq") && v.tur !== "izoh" && mediaBor(v.natija) && zernioBor()) {
+  // Agent natijasi (video, rasm): eski «Hozir joylash» tugmalari ham Studiya OS'dagi joylash oynasiga yo'naltiriladi
+  if ((amal === "ha" || amal === "hv" || amal === "vq") && v.tur !== "izoh" && v.tur !== "post" && mediaBor(v.natija)) {
+    await yubor(egasi(), `📤 <b>#${id}</b> — qaysi loyiha va akkauntga joylaymiz? Studiya OS'da tanlang:`, [[joylaTugma(id)]]);
+    return { ok: true, yonaltirildi: true };
+  }
+  // Egasining o'z posti (/post) — product CRM akkaunti (bot kaliti)
+  if ((amal === "ha" || amal === "hv" || amal === "vq") && v.tur === "post" && mediaBor(v.natija) && zernioBor()) {
     if (v.tg_msg) await tg("editMessageReplyMarkup", { chat_id: egasi(), message_id: v.tg_msg, reply_markup: { inline_keyboard: [] } }).catch(() => {});
     return serverdaJoyla(id, amal === "hv" ? "eng_yaxshi" : amal === "vq" ? String(vaqt || "") : "hozir");
   }
@@ -454,7 +464,7 @@ export async function apiNavbat() {
   await q(`update agent_vazifalar set holat = 'navbatda', updated_at = now()
            where holat = 'ishlanmoqda' and updated_at < now() - interval '2 hours'`);
   return q(
-    `select v.id, v.loyiha, v.tur, v.buyruq, v.holat, v.natija, v.izohlar, v.urinish, v.ota_id, o.natija ota_natija,
+    `select v.id, v.loyiha, v.brend_id, (select nom from brendlar b where b.id = v.brend_id) brend, v.tur, v.buyruq, v.holat, v.natija, v.izohlar, v.urinish, v.ota_id, o.natija ota_natija,
             to_char(v.created_at at time zone 'Asia/Tashkent','YYYY-MM-DD HH24:MI') yaratilgan
      from agent_vazifalar v left join agent_vazifalar o on o.id = v.ota_id
      where v.holat in ('navbatda','tasdiqlandi') and (v.kun is null or v.kun <= $1::date)
@@ -595,7 +605,7 @@ export async function panelMatni(): Promise<{ text: string; kb: Klaviatura }> {
       if (keyingi.length) t.push(`   Keyin: ${keyingi.map(esc).join(" → ")}`);
     }
   } else {
-    t.push(`💤 <b>Hozir ishlamayapti.</b> Keyingi tekshiruv: ${k.ertaga ? "ertaga " : ""}<b>${k.vaqt}</b>`);
+    t.push(`💤 <b>Hozir bo'sh.</b> Vazifa berilsa Claude o'zi ishga tushadi (avtomatik jadval yo'q).`);
   }
 
   const bolim = (sarlavha: string, arr: any[], qoshimcha?: (r: any) => string) => {
@@ -746,11 +756,13 @@ function taklifTugmalari(id: number, n: Natija) {
   return (n.takliflar ?? []).slice(0, 3).map((t, i) => [{ text: `▶️ ${String(t.matn).slice(0, 40)}`, callback_data: `ag:tk:${id}:${i}` }]);
 }
 export async function apiNatija(id: number, n: Natija) {
-  // Murojaat havolalari: dispetcher Zernio orqali joylasa ham caption'da bo'lsin
-  if (n.caption) n.caption = igHavola(n.caption);
-  if (n.tg_matn) n.tg_matn = tgHavola(n.tg_matn);
-  const v = (await q(`select id, buyruq, izohlar, tur from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, izohlar, tur, loyiha from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
+  // Murojaat havolalari faqat product CRM vazifalariga (boshqa loyihalarniki — Studiya OS joylash oynasida, loyihaga qarab)
+  if (v.loyiha === "productcrm") {
+    if (n.caption) n.caption = igHavola(n.caption);
+    if (n.tg_matn) n.tg_matn = tgHavola(n.tg_matn);
+  }
   if (v.tur === "hisobot" || v.tur === "tahlil") {
     // Hisobot va tahlil tasdiq talab qilmaydi
     await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),

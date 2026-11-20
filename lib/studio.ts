@@ -325,8 +325,11 @@ export async function relizQil(id: number, vaqt: "hozir" | "eng_yaxshi", caption
   const video = (await q(`select mazmun, holat from studio_tugun where loyiha_id = $1 and kalit = 'video'`, [t.loyiha_id]))[0];
   if (!video || video.holat !== "tasdiqlandi" || !video.mazmun?.media_url) throw new Error("Avval yakuniy videoni tasdiqlang");
   const l = (await q(`select id, nom, loyiha from studio_loyiha where id = $1`, [t.loyiha_id]))[0];
-  const cap = igHavola(String(caption ?? t.mazmun?.caption ?? "").trim());
-  const tgm = tgHavola(String(tgMatn ?? t.mazmun?.tg_matn ?? "").trim());
+  // product CRM havolalari faqat product CRM loyihalariga; boshqa loyihalarniki — Studiya OS joylash oynasida
+  const crm = l.loyiha === "productcrm";
+  const cap0 = String(caption ?? t.mazmun?.caption ?? "").trim(), tgm0 = String(tgMatn ?? t.mazmun?.tg_matn ?? "").trim();
+  const cap = crm ? igHavola(cap0) : cap0;
+  const tgm = crm ? tgHavola(tgm0) : tgm0;
   if (!cap) throw new Error("Instagram matni bo‘sh");
   const natija = { matn: `Studiya #${l.id}: ${l.nom}`, media_url: video.mazmun.media_url, ...(video.mazmun.toliq_url ? { toliq_url: video.mazmun.toliq_url } : {}), media_tur: "video", caption: cap, tg_matn: tgm, studio: l.id };
   const v = (await q(`insert into agent_vazifalar (loyiha, tur, buyruq, holat, natija, kun) values ($1, 'video', $2, 'tasdiq', $3::jsonb, $4::date) returning id`,
@@ -335,7 +338,7 @@ export async function relizQil(id: number, vaqt: "hozir" | "eng_yaxshi", caption
   const r = await qaror(v.id, vaqt === "eng_yaxshi" ? "hv" : "ha");
   await q(`update studio_tugun set holat = 'tasdiqlandi', updated_at = now() where id = $1`, [id]);
   await q(`update studio_loyiha set holat = 'tugadi', updated_at = now() where id = $1`, [t.loyiha_id]);
-  await jurnalga(t.loyiha_id, vaqt === "eng_yaxshi" ? "Reliz: eng yaxshi vaqtga rejalandi" : "Reliz: joylanmoqda", "siz");
+  await jurnalga(t.loyiha_id, (r as any)?.yonaltirildi ? "Reliz: joylash oynasiga yuborildi (loyiha va akkauntni tanlang)" : vaqt === "eng_yaxshi" ? "Reliz: eng yaxshi vaqtga rejalandi" : "Reliz: joylanmoqda", "siz");
   await egasigaXabar(t.loyiha_id);
   return { ok: true, vazifa: v.id, natija: r };
 }

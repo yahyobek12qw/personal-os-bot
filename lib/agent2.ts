@@ -3,7 +3,7 @@ import { igHavola, tgHavola } from "./havolalar";
 
 import { q } from "./db";
 import { tg, yubor, esc, type Klaviatura } from "./telegram";
-import { jadvalTayyorla, panelYangila, keyingiMatnOchiq } from "./agent";
+import { jadvalTayyorla, panelYangila, SOS_URL } from "./agent";
 import { zernioBor, mediaYukla, postYarat as zPost, engYaxshiVaqt, postHavolasi } from "./zernio";
 
 const egasi = () => String(process.env.ALLOWED_CHAT_ID);
@@ -82,17 +82,17 @@ export async function postYarat(m: any, media: { fileId: string; tur: string; si
     [`Post: ${caption.split("\n")[0].slice(0, 60) || (media.tur === "video" ? "video" : "rasm")}`, JSON.stringify(natija)],
   ))[0];
   const k = await kanal();
+  // Loyihani egasi tanlaydi: Studiya OS'da istalgan loyiha, yoki shu yerdan to'g'ridan-to'g'ri product CRM'ga
   const kb: Klaviatura = [
-    [{ text: "✅ Hozir joylash", callback_data: `ag:ha:${r.id}` }, { text: "🕐 Eng yaxshi vaqtda", callback_data: `ag:hv:${r.id}` }],
+    [{ text: "📤 Loyiha va akkaunt tanlash", web_app: { url: `${SOS_URL}#/joyla/${r.id}` } }],
+    [{ text: "✅ product CRM'ga hozir", callback_data: `ag:ha:${r.id}` }, { text: "🕐 product CRM — eng yaxshi vaqt", callback_data: `ag:hv:${r.id}` }],
     [{ text: "✏️ Caption'ni o'zgartir", callback_data: `ag:oz:${r.id}` }, { text: "❌", callback_data: `ag:yoq:${r.id}` }],
   ];
   const msg = await yubor(m.chat.id, [
     `📤 <b>Post #${r.id} tayyor</b> — ${media.tur === "video" ? "video" : "rasm"}`,
-    `Qayerga: Instagram @productcrm${k ? ` + Telegram ${esc(k.nom)}` : ""}`,
+    `Qayerga: o'zingiz tanlaysiz. «product CRM» tugmalari — Instagram @productcrm${k ? ` + Telegram ${esc(k.nom)}` : ""} (havolalari bilan).`,
     "",
     caption ? `<i>${esc(caption.slice(0, 900))}</i>` : "<i>(caption yo'q)</i>",
-    "",
-    `Tasdiqlasangiz, agent keyingi tekshiruvda joylaydi (${keyingiMatnOchiq()}).`,
   ].join("\n"), kb, m.message_id);
   await q(`update agent_vazifalar set tg_msg = $2 where id = $1`, [r.id, msg.message_id]);
   await panelYangila();
