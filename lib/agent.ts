@@ -84,6 +84,7 @@ export async function jadvalTayyorla() {
     add column if not exists model text`);
   await q(`create table if not exists agent_sozlama (kalit text primary key, qiymat jsonb)`);
   await q(`alter table agent_vazifalar add column if not exists brend_id integer`);
+  for (const k of ["suhbat_id text", "bosqich text", "rejim text", "kontent_id text", "zanjir jsonb"]) await q(`alter table agent_vazifalar add column if not exists ${k}`);
   await q(`create table if not exists brendlar (id serial primary key, nom text not null, rang text not null default 'loy', zernio jsonb, tartib integer not null default 0, created_at timestamptz not null default now())`);
   tayyor = true;
 }
@@ -733,7 +734,7 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
+type Natija = { matn: string; xotira?: string; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
 
 // Tasdiq xabarida: Instagram caption va Telegram matni alohida
 function ikkiMatn(n: Natija) {
@@ -756,8 +757,22 @@ function taklifTugmalari(id: number, n: Natija) {
   return (n.takliflar ?? []).slice(0, 3).map((t, i) => [{ text: `▶️ ${String(t.matn).slice(0, 40)}`, callback_data: `ag:tk:${id}:${i}` }]);
 }
 export async function apiNatija(id: number, n: Natija) {
-  const v = (await q(`select id, buyruq, izohlar, tur, loyiha from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, izohlar, tur, loyiha, suhbat_id, bosqich from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
+  // Studiya OS chatidan kelgan ssenariy / kadr / tahlil: botda qisqa xabar + chatga havola (tanlov chatda qilinadi)
+  if (v.tur === "tahlil" && v.bosqich && String(v.buyruq).startsWith("Studiya OS chatidan")) {
+    await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
+                    joriy = jsonb_array_length(reja), holat = 'bajarildi', natija = $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(n)]);
+    await holatXabariniYangila(id, "tayyor");
+    const nom = { ssenariy: "📝 Ssenariy variantlari", kadr: "🖼 Kadr namunalari", tahlil: "📊 Loyiha tahlili" }[String(v.bosqich)] || "🤖 Natija";
+    const url = `${SOS_URL}#/chat${v.suhbat_id ? "/" + v.suhbat_id : ""}`;
+    const kb: Klaviatura = [[{ text: v.bosqich === "ssenariy" ? "✍️ Tanlash — chatda" : v.bosqich === "kadr" ? "✅ Tasdiqlash — chatda" : "💬 Chatda ochish", web_app: { url } }]];
+    if (n.media_urls?.length) await tg("sendMediaGroup", { chat_id: egasi(), media: n.media_urls.slice(0, 10).map((u) => ({ type: "photo", media: u })) }).catch((e) => console.error("album", e));
+    const m = await yubor(egasi(), `${nom} · <b>#${id}</b>\n\n${esc(qisqaAjrat(n))}`, kb);
+    await q(`update agent_vazifalar set tg_msg = $2 where id = $1`, [id, m.message_id]);
+    await panelYangila();
+    return { tg_msg: m.message_id };
+  }
   // Murojaat havolalari faqat product CRM vazifalariga (boshqa loyihalarniki — Studiya OS joylash oynasida, loyihaga qarab)
   if (v.loyiha === "productcrm") {
     if (n.caption) n.caption = igHavola(n.caption);
