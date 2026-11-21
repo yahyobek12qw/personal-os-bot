@@ -36,7 +36,7 @@ export function faylKorinish(f: any) {
   return {
     id: f.id, tur: f.tur, nom: f.nom, hajm: f.hajm ? Number(f.hajm) : null, katta,
     src, thumb: f.thumb_id ? proksi(f.thumb_id) : f.tur === "rasm" ? src : null,
-    tgLink: f.tg_msg ? arxivHavola(f.tg_msg, (f.tg_bolim || (f.tur === "fayl" ? "hujjat" : f.tur)) as any) : null,
+    tgLink: f.tg_msg ? arxivHavola(f.tg_msg, (f.tg_bolim || (f.tur === "fayl" ? "hujjat" : f.tur)) as any, f.tg_mavzu) : null,
   };
 }
 
@@ -290,9 +290,10 @@ export async function sohaSaqla(id: string | null, x: { nom?: string; rang?: str
 }
 
 // ---------- fayllar ----------
-export async function faylQosh(elementId: string, f: { tur: string; nom?: string | null; hajm?: number | null; file_id?: string | null; thumb_id?: string | null; tg_msg?: number | null; tg_bolim?: string | null; url?: string | null }) {
-  await q(`insert into fayllar (element_id, tur, nom, hajm, file_id, thumb_id, tg_msg, tg_bolim, url) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [elementId, f.tur, f.nom ?? null, f.hajm ?? null, f.file_id ?? null, f.thumb_id ?? null, f.tg_msg ?? null, f.tg_bolim ?? null, f.url ?? null]);
-  await q(`update elementlar set updated_at = now() where id = $1`, [elementId]);
+export async function faylQosh(elementId: string, f: { tur: string; nom?: string | null; hajm?: number | null; file_id?: string | null; thumb_id?: string | null; tg_msg?: number | null; tg_bolim?: string | null; url?: string | null; brend_id?: number | null; tg_mavzu?: number | null }) {
+  await q(`insert into fayllar (element_id, tur, nom, hajm, file_id, thumb_id, tg_msg, tg_bolim, url, brend_id, tg_mavzu) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [elementId, f.tur, f.nom ?? null, f.hajm ?? null, f.file_id ?? null, f.thumb_id ?? null, f.tg_msg ?? null, f.tg_bolim ?? null, f.url ?? null, f.brend_id ?? null, f.tg_mavzu ?? null]);
+  if (f.brend_id) await q(`update elementlar set brend_id = $2, updated_at = now() where id = $1`, [elementId, f.brend_id]);
+  else await q(`update elementlar set updated_at = now() where id = $1`, [elementId]);
 }
 export async function faylOchir(id: string) {
   await q(`delete from fayllar where id = $1`, [id]);

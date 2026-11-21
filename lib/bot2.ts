@@ -5,7 +5,7 @@ import { q } from "./db";
 import * as v2 from "./v2";
 import { kunQosh } from "./parse";
 import { tg, yubor, tahrirla, javob, yozmoqda, faylOl, esc, ILOVA_URL, SHAXSIY_URL, type Klaviatura, type Tugma } from "./telegram";
-import { arxivga, arxivChat, arxivdanYubor, type Bolim, type ArxivFayl } from "./arxiv";
+import { arxivga, arxivChat, arxivdanYubor, loyihaMavzusi, loyihaAniqla, loyihalarRoyxati, loyihagaKochir, faolLoyihaYoz, type Bolim, type ArxivFayl } from "./arxiv";
 import { qisqa, toliq } from "./ids";
 import { sttBor, transkripsiya } from "./stt";
 import { guruhJavobi, guruhTugmasi, guruhBuyrugi, faqBuyrugi } from "./guruh";
@@ -55,8 +55,8 @@ export async function kartochka(id: string, qoshimcha?: string): Promise<{ text:
   const e = (await q(
     `select e.id, e.tur, e.nom, e.matn, e.soha_id, e.holat, e.inbox, to_char(e.sana,'YYYY-MM-DD') sana, to_char(e.vaqt,'HH24:MI') vaqt,
             e.summa::float summa, e.kategoriya, e.havola, o.nom ota_nom,
-            (select count(*)::int from fayllar f where f.element_id = e.id) fayllar
-     from elementlar e left join elementlar o on o.id = e.ota_id where e.id = $1`, [id]))[0];
+            (select count(*)::int from fayllar f where f.element_id = e.id) fayllar, e.brend_id, b.nom brend_nom
+     from elementlar e left join elementlar o on o.id = e.ota_id left join brendlar b on b.id = e.brend_id where e.id = $1`, [id]))[0];
   if (!e) return { text: "🗑 <i>Bu yozuv o'chirilgan.</i>", kb: [] };
   const s = (await sohalar()).get(e.soha_id);
   const bajarildi = e.holat === "bajarildi";
@@ -72,6 +72,7 @@ export async function kartochka(id: string, qoshimcha?: string): Promise<{ text:
   const qatorlar = [qator1, tafsil];
   if (e.havola) qatorlar.push(`🔗 ${esc(e.havola)}`);
   if (e.fayllar) qatorlar.push(`📎 ${e.fayllar} ta fayl`);
+  if (e.brend_nom) qatorlar.push(`📁 Loyiha: <b>${esc(e.brend_nom)}</b>`);
   if (e.inbox) qatorlar.push("<i>📥 Inbox'da — sohasini yoki sanasini tanlang</i>");
   if (qoshimcha) qatorlar.push("", qoshimcha);
 
@@ -92,6 +93,7 @@ export async function kartochka(id: string, qoshimcha?: string): Promise<{ text:
   else r2.push({ text: "🔀 Turi", callback_data: `tl:${k}` });
   if (e.fayllar) r2.push({ text: "📤 Fayllar", callback_data: `f:${k}` });
   kb.push(r2);
+  if (e.fayllar) kb.push([{ text: e.brend_nom ? `📁 ${e.brend_nom} · o'zgartirish` : "📁 Loyihaga biriktirish", callback_data: `lb:${k}` }]);
   kb.push([ilova("📱 Ochish", `e=${e.id}`), { text: "🗑", callback_data: `x:${k}` }]);
   return { text: qatorlar.join("\n"), kb };
 }
@@ -127,6 +129,7 @@ export const YORDAM = [
   "",
   "📷 Rasm, video, ovoz yoki fayl → yozuv bo'ladi, fayl Telegram arxiv guruhida saqlanadi.",
   "🎙 Izohsiz ovozli xabar → matnga aylantiriladi.",
+  "📁 /loyiha — faol loyihani tanlang: fayllar o'sha loyihaning mavzusiga tushadi (yoki izohga loyiha nomini yozing: «multik ovozi»).",
   "↩️ Kartochkaga <b>javob (Reply)</b> qilib fayl yuborsangiz — o'sha yozuvga qo'shiladi; matn yuborsangiz — qaydiga yoziladi.",
   "",
   "Pastdagi tugmalar: ☀️ Bugun · 🗓 Hafta · 📥 Inbox · 💰 Pul · 🔁 Odatlar · 🔍 Qidirish",
@@ -263,16 +266,31 @@ function kartaElementi(r: any): string | null {
 }
 
 // Faylni arxiv guruhiga nusxalaydi va elementga biriktiradi
-async function faylSaqla(m: any, media: Media, elementId: string, nom: string) {
+async function faylSaqla(m: any, media: Media, elementId: string, nom: string, brend: number | null = null) {
   let tgMsg: number | null = null;
+  const mavzu = brend ? await loyihaMavzusi(brend).catch(() => null) : null;
   if (arxivChat()) {
-    tgMsg = await arxivga(m.chat.id, m.message_id, media.bolim, `${esc(nom)}\n<i>${bugun()}</i>`, media.izohMumkin).catch((e) => {
+    tgMsg = await arxivga(m.chat.id, m.message_id, media.bolim, `${esc(nom)}\n<i>${bugun()}</i>`, media.izohMumkin, mavzu).catch((e) => {
       console.error(e);
       return null;
     });
   }
-  await v2.faylQosh(elementId, { tur: media.tur, nom: media.nomi, hajm: media.size ?? null, file_id: media.fileId, thumb_id: media.thumb ?? null, tg_msg: tgMsg, tg_bolim: media.bolim });
+  await v2.faylQosh(elementId, { tur: media.tur, nom: media.nomi, hajm: media.size ?? null, file_id: media.fileId, thumb_id: media.thumb ?? null, tg_msg: tgMsg, tg_bolim: media.bolim, brend_id: brend, tg_mavzu: tgMsg ? mavzu : null });
   return tgMsg;
+}
+
+// Yozuv fayllarini boshqa loyihaga o'tkazadi (Telegram mavzusi ham)
+async function loyihagaBiriktir(elementId: string, brend: number | null) {
+  await q(`update elementlar set brend_id = $2, updated_at = now() where id = $1`, [elementId, brend]);
+  const f = await q(`select id, tg_msg, tg_mavzu from fayllar where element_id = $1`, [elementId]);
+  for (const x of f) {
+    let yangi: { id: number; mavzu: number } | null = null;
+    if (brend && x.tg_msg) {
+      const mavzu = await loyihaMavzusi(brend).catch(() => null);
+      if (mavzu && Number(x.tg_mavzu) !== mavzu) yangi = await loyihagaKochir(Number(x.tg_msg), brend).catch(() => null);
+    }
+    await q(`update fayllar set brend_id = $2${yangi ? ", tg_msg = $3, tg_mavzu = $4" : ""} where id = $1`, yangi ? [x.id, brend, yangi.id, yangi.mavzu] : [x.id, brend]);
+  }
 }
 
 async function elementBormi(id: string) {
@@ -298,7 +316,8 @@ export async function xabarKeldi(m: any) {
     if (!el) return yubor(chatId, "Bu yozuv topilmadi — u eski tizimdan yoki o'chirilgan.", undefined, m.message_id);
     await yozmoqda(chatId);
     if (media) {
-      await faylSaqla(m, media, el.id, el.nom);
+      const eb = (await q(`select brend_id from elementlar where id = $1`, [el.id]))[0]?.brend_id ?? null;
+      await faylSaqla(m, media, el.id, el.nom, eb);
       const k = await kartochka(el.id, `📎 <i>${esc(media.sarlavha)} qo'shildi.</i>`);
       return yubor(chatId, k.text, k.kb, m.message_id);
     }
@@ -331,6 +350,13 @@ export async function xabarKeldi(m: any) {
     if (cmd === "faq") return faqBuyrugi(chatId, arg);
     if (cmd === "post") return yubor(chatId, "📤 <b>Post joylash</b>\nRasm yoki videoni yuboring va izohiga (caption) <code>/post</code> dan keyin matnni yozing:\n<code>/post Tikuvxonangiz uchun yangi imkoniyat…</code>\nMen ko'rsataman, siz ✅ bosasiz — agent Instagram'ga (va ulangan bo'lsa kanalga) joylaydi.");
     if (cmd === "agent") return panelYangila(true);
+    if (cmd === "loyiha") {
+      const l = await loyihalarRoyxati();
+      const kb: Klaviatura = [];
+      for (let i = 0; i < l.length; i += 2) kb.push(l.slice(i, i + 2).map((x) => ({ text: `📁 ${x.nom}`, callback_data: `lf:${x.id}` })));
+      kb.push([{ text: "Umumiy (loyihasiz)", callback_data: "lf:-" }]);
+      return yubor(chatId, "📁 <b>Faol loyiha</b>\nTanlang — keyingi 45 daqiqada yuborgan ovoz, video, rasm va fayllaringiz o'sha loyihaning Telegram mavzusiga tushadi.\nIzohga loyiha nomini yozsangiz ham bo'ladi (masalan «multik»).", kb);
+    }
     if (cmd === "studio") return yubor(chatId, "🎛 <b>Studiya</b>\nTelefonda — agent: kelgan kontentni ko‘rib, tasdiqlaysiz. Planshet yoki kompyuterda — to‘liq studiya: loyihalar doskasi, variantlar, qahramonlar, ovozlar (havola 30 kun amal qiladi).", [[{ text: "📱 Agent (Telegram ichida)", web_app: { url: STUDIO_URL } }], [{ text: "🖥 To‘liq studiya (brauzer)", url: studioHavola() }]]);
     if (cmd === "ilova") return yubor(chatId, "📱 <b>Ilova</b>\n🎛 Studiya — asosiy ish (kontent, agent).\n🏠 Shaxsiy — Bugun, Kalendar, Sohalar, Inbox.", [[ilova("🎛 Studiya"), ilova("🏠 Shaxsiy", "bugun")]]);
     if (cmd === "qidir" && !arg) return tg("sendMessage", { chat_id: chatId, text: "🔍 Nimani qidiramiz? Shu xabarga javob qilib so'z yozing.", reply_markup: { force_reply: true, input_field_placeholder: "Qidiruv so'zi" } });
@@ -365,19 +391,24 @@ export async function xabarKeldi(m: any) {
     const g = String(m.media_group_id);
     const mavjud = (await q(`select id, nom from elementlar where meta->>'tg_guruh' = $1 and created_at > now() - interval '10 minutes' order by created_at limit 1`, [g]))[0];
     if (mavjud) {
-      await faylSaqla(m, media, mavjud.id, mavjud.nom);
+      const eb = (await q(`select brend_id from elementlar where id = $1`, [mavjud.id]))[0]?.brend_id ?? null;
+      await faylSaqla(m, media, mavjud.id, mavjud.nom, eb);
       return;
     }
   }
 
   const ustidan: Record<string, any> = {};
+  const izohlar: string[] = [];
   if (!matn && media) ustidan.nom = media.sarlavha;
   const { id } = await v2.tezQosh(matn || media!.sarlavha, ustidan, "Telegram");
   if (media) {
     if (m.media_group_id || transkript) await v2.saqla(id, { meta: { ...(m.media_group_id ? { tg_guruh: String(m.media_group_id) } : {}), ...(transkript ? { transkript: true } : {}) } });
-    await faylSaqla(m, media, id, matn || media.sarlavha);
+    const ly = await loyihaAniqla(matn).catch(() => null);
+    await faylSaqla(m, media, id, matn || media.sarlavha, ly?.id ?? null);
+    if (ly?.avto) izohlar.push("📁 <i>Faol loyihaga tushdi (45 daqiqa ichida tanlangan). Boshqa bo'lsa — «o'zgartirish».</i>");
   }
-  const k = await kartochka(id, transkript ? "🎙 <i>Ovozdan matnga aylantirildi, ovoz ham saqlandi.</i>" : undefined);
+  if (transkript) izohlar.unshift("🎙 <i>Ovozdan matnga aylantirildi, ovoz ham saqlandi.</i>");
+  const k = await kartochka(id, izohlar.length ? izohlar.join("\n") : undefined);
   return yubor(chatId, k.text, k.kb, m.message_id);
 }
 
@@ -412,6 +443,13 @@ export async function tugmaBosildi(cq: any) {
     }
     case "ib":
       return javob(cq.id, "Shu xabarga javob (Reply) qilib rasm, video, ovoz yoki fayl yuboring", true);
+    case "lf": {
+      const bid = a && a !== "-" ? Number(a) : null;
+      await faolLoyihaYoz(bid);
+      const l = (await loyihalarRoyxati()).find((x) => x.id === bid);
+      await tahrirla(chatId, msgId, bid ? `📁 Faol loyiha: <b>${esc(l?.nom ?? String(bid))}</b>\nKeyingi 45 daqiqada yuborgan fayllaringiz shu loyiha mavzusiga tushadi.` : "📁 Faol loyiha olib tashlandi — fayllar umumiy bo'limlarga tushadi.");
+      return javob(cq.id, bid ? `📁 ${l?.nom ?? ""}` : "Umumiy");
+    }
   }
   if (!(await bor())) return;
 
@@ -503,6 +541,22 @@ export async function tugmaBosildi(cq: any) {
       await v2.saqla(id, { kategoriya: kat });
       await yangila();
       return javob(cq.id, `🏷 ${kat}`);
+    }
+    case "lb": {
+      const k = qisqa(id);
+      if (!b) {
+        const l = await loyihalarRoyxati();
+        const kb: Klaviatura = [];
+        for (let i = 0; i < l.length; i += 2) kb.push(l.slice(i, i + 2).map((x) => ({ text: `📁 ${x.nom}`, callback_data: `lb:${k}:${x.id}` })));
+        kb.push([{ text: "Umumiy (loyihasiz)", callback_data: `lb:${k}:-` }, { text: "‹ Orqaga", callback_data: `c:${k}` }]);
+        await yangila("<b>Qaysi loyihaga tegishli?</b> Fayl o'sha loyihaning Telegram mavzusiga ko'chadi.", kb);
+        return javob(cq.id);
+      }
+      const bid = b === "-" ? null : Number(b);
+      await javob(cq.id, "📁 Ko'chirilmoqda…");
+      await loyihagaBiriktir(id, bid);
+      if (bid) await faolLoyihaYoz(bid);
+      return yangila(bid ? "📁 <i>Loyihaga biriktirildi. Keyingi 45 daqiqadagi fayllar ham shu loyihaga tushadi.</i>" : "📁 <i>Loyihadan olindi.</i>");
     }
     case "f": {
       const f = await q(`select tur, file_id, tg_msg, tg_bolim, hajm from fayllar where element_id = $1 order by created_at`, [id]);

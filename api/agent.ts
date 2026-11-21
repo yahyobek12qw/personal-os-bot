@@ -12,6 +12,7 @@ import { agentIshlari, agentTugun, agentTugunYangi, agentBuyruqOqildi, kutubxona
 // Bot "/" menyusiga agent buyruqlari (mavjudlari saqlanadi)
 const AGENT_BUYRUQLAR = [
   { command: "agent", description: "🤖 Agent paneli: nima qilyapti, navbat" },
+  { command: "loyiha", description: "📁 Faol loyiha: fayllar o'sha loyihaga tushadi" },
   { command: "kontent", description: "✍️ Agentga kontent/ssenariy vazifasi" },
   { command: "rasmpost", description: "🖼 Rasmli post (karusel) tayyorlash" },
   { command: "tahlil", description: "🔎 Research va tahlil" },

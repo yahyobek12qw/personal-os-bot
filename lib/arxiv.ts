@@ -2,6 +2,7 @@
 // Bot faylni Telegram ichida nusxalaydi, shuning uchun hajm chegarasi yo'q (yuklab olish kerak emas).
 
 import { tg } from "./telegram";
+import { q } from "./db";
 
 export type Bolim = "rasm" | "video" | "hujjat" | "ovoz";
 
@@ -29,23 +30,78 @@ export async function arxivga(
   bolim: Bolim,
   izoh: string,
   izohMumkin: boolean,
+  loyihaMavzu?: number | null,
 ): Promise<number | null> {
   const chat = arxivChat();
   if (!chat) return null;
-  const thread = mavzular()[bolim];
-  const r = await tg("copyMessage", {
+  const thread = loyihaMavzu || mavzular()[bolim];
+  const nusxa = (t?: number) => tg("copyMessage", {
     chat_id: chat,
     from_chat_id: fromChat,
     message_id: messageId,
-    ...(thread ? { message_thread_id: thread } : {}),
-    ...(izohMumkin ? { caption: izoh.slice(0, 1000), parse_mode: "HTML" } : {}),
+    ...(t ? { message_thread_id: t } : {}),
+    ...(izohMumkin ? { caption: (loyihaMavzu ? `${BOLIM_NOMI[bolim]} · ` : "") + izoh.slice(0, 950), parse_mode: "HTML" } : {}),
+  });
+  const r = await nusxa(thread).catch((e) => {
+    if (loyihaMavzu && /thread|topic/i.test(String(e?.message))) return nusxa(mavzular()[bolim]);
+    throw e;
   });
   return r?.message_id ?? null;
 }
 
-export function arxivHavola(msgId: number, bolim: Bolim): string {
+// ---------- Loyihalar bo'yicha ajratish ----------
+// Har loyihaning guruhda o'z mavzusi bor (birinchi marta kerak bo'lganda yaratiladi).
+export async function loyihaMavzusi(brendId: number): Promise<number | null> {
+  const r = (await q(`select nom, sozlama->>'tg_mavzu' m from brendlar where id = $1`, [brendId]))[0];
+  if (!r) return null;
+  if (r.m) return Number(r.m);
+  const chat = arxivChat();
+  if (!chat) return null;
+  const d = await tg("createForumTopic", { chat_id: chat, name: `📁 ${r.nom}`.slice(0, 128), icon_color: 7322096 });
+  const id = d?.message_thread_id;
+  if (!id) return null;
+  await q(`update brendlar set sozlama = coalesce(sozlama,'{}'::jsonb) || jsonb_build_object('tg_mavzu', $2::int) where id = $1`, [brendId, id]);
+  await tg("sendMessage", { chat_id: chat, message_thread_id: id, text: `📁 «${r.nom}» loyihasining fayllari shu yerga tushadi: videolar, ovozlar, rasmlar, hujjatlar.` }).catch(() => {});
+  return id;
+}
+
+export const loyihalarRoyxati = (): Promise<{ id: number; nom: string }[]> =>
+  q(`select id, nom from brendlar order by id`).catch(() => []);
+
+// Faol loyiha: egasi oxirgi tanlagan loyiha 45 daqiqa davomida keyingi fayllarga ham qo'llanadi
+const FAOL_MUDDAT = 45 * 60 * 1000;
+export async function faolLoyihaOl(): Promise<number | null> {
+  const r = (await q(`select qiymat from sozlamalar where kalit = 'tg_faol_loyiha'`).catch(() => []))[0]?.qiymat;
+  return r?.id && Date.now() - Number(r.t || 0) < FAOL_MUDDAT ? Number(r.id) : null;
+}
+export async function faolLoyihaYoz(id: number | null) {
+  await q(`insert into sozlamalar (kalit, qiymat) values ('tg_faol_loyiha', $1) on conflict (kalit) do update set qiymat = excluded.qiymat`, [JSON.stringify({ id, t: Date.now() })]);
+}
+
+// Izohdagi loyiha nomi (masalan «multik ovozi») yoki faol loyiha
+export async function loyihaAniqla(matn: string): Promise<{ id: number; avto: boolean } | null> {
+  const l = await loyihalarRoyxati();
+  const t = ` ${matn.toLowerCase()} `;
+  const top = l.find((x) => x.nom && t.includes(x.nom.toLowerCase()));
+  if (top) return { id: top.id, avto: false };
+  const f = await faolLoyihaOl();
+  return f ? { id: f, avto: true } : null;
+}
+
+// Arxivdagi xabarni loyiha mavzusiga ko'chiradi (nusxa + eskisini o'chirish)
+export async function loyihagaKochir(msgId: number, brendId: number): Promise<{ id: number; mavzu: number } | null> {
+  const chat = arxivChat();
+  const mavzu = await loyihaMavzusi(brendId);
+  if (!chat || !mavzu) return null;
+  const r = await tg("copyMessage", { chat_id: chat, from_chat_id: chat, message_id: msgId, message_thread_id: mavzu });
+  if (!r?.message_id) return null;
+  await tg("deleteMessage", { chat_id: chat, message_id: msgId }).catch(() => {});
+  return { id: r.message_id, mavzu };
+}
+
+export function arxivHavola(msgId: number, bolim: Bolim, mavzu?: number | null): string {
   const c = arxivChat().replace(/^-100/, "");
-  const t = mavzular()[bolim];
+  const t = mavzu || mavzular()[bolim];
   return t ? `https://t.me/c/${c}/${t}/${msgId}` : `https://t.me/c/${c}/${msgId}`;
 }
 

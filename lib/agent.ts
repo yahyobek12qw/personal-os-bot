@@ -764,9 +764,9 @@ export async function apiNatija(id: number, n: Natija) {
     await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
                     joriy = jsonb_array_length(reja), holat = 'bajarildi', natija = $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(n)]);
     await holatXabariniYangila(id, "tayyor");
-    const nom = { ssenariy: "📝 Ssenariy variantlari", kadr: "🖼 Kadr namunalari", tahlil: "📊 Loyiha tahlili" }[String(v.bosqich)] || "🤖 Natija";
+    const nom = { ssenariy: "📝 Ssenariy variantlari", kadr: "🖼 Kadr namunalari", tahlil: "📊 Loyiha tahlili", reja: "🗓 Loyiha rejasi", reja_tahlil: "📊 Reja natijasi" }[String(v.bosqich)] || "🤖 Natija";
     const url = `${SOS_URL}#/chat${v.suhbat_id ? "/" + v.suhbat_id : ""}`;
-    const kb: Klaviatura = [[{ text: v.bosqich === "ssenariy" ? "✍️ Tanlash — chatda" : v.bosqich === "kadr" ? "✅ Tasdiqlash — chatda" : "💬 Chatda ochish", web_app: { url } }]];
+    const kb: Klaviatura = [[{ text: v.bosqich === "ssenariy" ? "✍️ Tanlash — chatda" : v.bosqich === "kadr" || v.bosqich === "reja" ? "✅ Tasdiqlash — chatda" : "💬 Chatda ochish", web_app: { url } }]];
     if (n.media_urls?.length) await tg("sendMediaGroup", { chat_id: egasi(), media: n.media_urls.slice(0, 10).map((u) => ({ type: "photo", media: u })) }).catch((e) => console.error("album", e));
     const m = await yubor(egasi(), `${nom} · <b>#${id}</b>\n\n${esc(qisqaAjrat(n))}`, kb);
     await q(`update agent_vazifalar set tg_msg = $2 where id = $1`, [id, m.message_id]);
