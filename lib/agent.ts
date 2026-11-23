@@ -735,7 +735,7 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; matnlar?: Record<string, unknown>; uslub_karta?: Record<string, unknown>; ovoz_url?: string; vaqt_url?: string; xotira?: string; format?: string; davomiylik?: number; sarlavha?: string; muqova?: string; reja_id?: number; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
+type Natija = { matn: string; matnlar?: Record<string, unknown>; uslub_karta?: Record<string, unknown>; ovoz_url?: string; vaqt_url?: string; vaqt?: unknown[]; eshit?: Record<string, unknown>; xotira?: string; format?: string; davomiylik?: number; sarlavha?: string; muqova?: string; reja_id?: number; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
 
 // Tasdiq xabarida: Instagram caption va Telegram matni alohida
 function ikkiMatn(n: Natija) {
