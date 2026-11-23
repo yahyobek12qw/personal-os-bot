@@ -565,8 +565,9 @@ function holatMatni(v: any, yakun?: string) {
 }
 
 async function holatXabariniYangila(id: number, yakun?: string) {
-  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg, model from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg, model, rejim from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) return;
+  if (v.rejim === "toliq") return; // to'liq avtonom: har vazifa uchun jarayon xabari yo'q — muhim voqealarni Studiya OS o'zi yozadi
   const text = holatMatni(v, yakun);
   if (v.holat_msg) {
     await tg("editMessageText", { chat_id: egasi(), message_id: v.holat_msg, text, parse_mode: "HTML" }).catch(() => {});
