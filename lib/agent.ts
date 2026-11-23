@@ -565,8 +565,9 @@ function holatMatni(v: any, yakun?: string) {
 }
 
 async function holatXabariniYangila(id: number, yakun?: string) {
-  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg, model from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, qadamlar, reja, joriy, taxmin_daq, boshlangan, holat_msg, model, rejim from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) return;
+  if (v.rejim === "toliq") return; // to'liq avtonom: har vazifa uchun jarayon xabari yo'q — muhim voqealarni Studiya OS o'zi yozadi
   const text = holatMatni(v, yakun);
   if (v.holat_msg) {
     await tg("editMessageText", { chat_id: egasi(), message_id: v.holat_msg, text, parse_mode: "HTML" }).catch(() => {});
@@ -734,7 +735,7 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; xotira?: string; format?: string; davomiylik?: number; sarlavha?: string; muqova?: string; reja_id?: number; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
+type Natija = { matn: string; matnlar?: Record<string, unknown>; uslub_karta?: Record<string, unknown>; ovoz_url?: string; vaqt_url?: string; vaqt?: unknown[]; eshit?: Record<string, unknown>; xotira?: string; format?: string; davomiylik?: number; sarlavha?: string; muqova?: string; reja_id?: number; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
 
 // Tasdiq xabarida: Instagram caption va Telegram matni alohida
 function ikkiMatn(n: Natija) {
@@ -757,8 +758,18 @@ function taklifTugmalari(id: number, n: Natija) {
   return (n.takliflar ?? []).slice(0, 3).map((t, i) => [{ text: `▶️ ${String(t.matn).slice(0, 40)}`, callback_data: `ag:tk:${id}:${i}` }]);
 }
 export async function apiNatija(id: number, n: Natija) {
-  const v = (await q(`select id, buyruq, izohlar, tur, loyiha, suhbat_id, bosqich from agent_vazifalar where id = $1`, [id]))[0];
+  const v = (await q(`select id, buyruq, izohlar, tur, loyiha, suhbat_id, bosqich, rejim from agent_vazifalar where id = $1`, [id]))[0];
   if (!v) throw new Error("vazifa topilmadi");
+  // To'liq avtonom (Studiya OS): tasdiq tugmalari va oraliq xabarlar yo'q — natija saqlanadi, keyingi qadamni
+  // Studiya OS avtopiloti va nazoratchi agent hal qiladi (egasiga muhim voqealarni o'zi yozadi). Avtopilot darhol uyg'otiladi.
+  if (v.rejim === "toliq") {
+    await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
+                    joriy = jsonb_array_length(reja), holat = 'bajarildi', natija = $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(n)]);
+    await holatXabariniYangila(id, "tayyor");
+    await panelYangila();
+    await fetch(`${SOS_URL.replace(/\/+$/, "").replace(/\/app$/, "")}/api/menejer?avtopilot=1`, { signal: AbortSignal.timeout(1500) }).catch(() => {});
+    return { tg_msg: null, avtonom: true };
+  }
   // Studiya OS chatidan kelgan ssenariy / kadr / tahlil: botda qisqa xabar + chatga havola (tanlov chatda qilinadi)
   if (v.tur === "tahlil" && v.bosqich && String(v.buyruq).startsWith("Studiya OS chatidan")) {
     await q(`update agent_vazifalar set qadamlar = qadamlar || jsonb_build_array(jsonb_build_object('matn', reja->>joriy, 'vaqt', now())),
