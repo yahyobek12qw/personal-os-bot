@@ -1,0 +1,32 @@
+# Studiya OS avtopilot signali (egasi qarori, 2026-11-24).
+# Vercel Hobby cron'lari soat ichida ±59 daqiqa aniqlikda ishlaydi, shuning uchun to'liq avtonom zanjir
+# (nazorat → qayta yasash → joylash, qotgan ishlarni tiklash, havolali hisobot) 2 soatgacha kutib qolardi.
+# Bu ish avtopilotni har 10 daqiqada uyg'otadi. Endpoint kalitsiz, idempotent va 45 soniyalik qulfli —
+# ortiqcha chaqiruv zarar qilmaydi. Vercel cron'lari zaxira bo'lib qoladi.
+# Eslatma: GitHub rejali ishlarni yuklama paytida bir necha daqiqa kechiktirishi mumkin; ochiq repoda
+# 60 kun hech qanday commit bo'lmasa, rejali ish o'chadi (Actions sahifasidan qayta yoqiladi).
+name: Avtopilot signali
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: avtopilot-signal
+  cancel-in-progress: false
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Studiya OS avtopilotini uyg'otish
+        run: |
+          kod=$(curl -sS -m 150 -o natija.json -w "%{http_code}" "https://studiya-os.vercel.app/api/menejer?avtopilot=1" || echo "000")
+          echo "HTTP $kod"
+          head -c 3000 natija.json 2>/dev/null || true
+          echo
+          if [ "$kod" != "200" ]; then echo "::warning::Avtopilot javobi $kod — keyingi signal 10 daqiqadan keyin"; fi
