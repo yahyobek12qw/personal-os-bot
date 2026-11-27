@@ -35,6 +35,30 @@ function ruxsat(req: VercelRequest) {
   return crypto.timingSafeEqual(Buffer.from(k), Buffer.from(s));
 }
 
+// Kadr darvozasi (Studiya OS): KADRLAR / KADR TUZATISH natijasidagi sahna arxivi va kadrlar ro'yxati.
+// 2026-11-27 gacha bu maydonlar filtrda yo'q edi — sahna_url tashlab yuborilgani uchun har VIDEO bosqichi sahnani
+// noldan qayta yig'ar edi (eng katta token isrofi). sahna_url: «sahna:N» (Studiya OS arxivi) yoki https.
+function kadrMaydonlari(b: any) {
+  const o: Record<string, unknown> = {};
+  const su = String(b.sahna_url || "");
+  if (/^sahna:\d+$/.test(su) || /^https:\/\//.test(su)) o.sahna_url = su;
+  if (/^https:\/\//.test(String(b.varaq_url || ""))) o.varaq_url = String(b.varaq_url);
+  if (Array.isArray(b.kadrlar)) {
+    const k = b.kadrlar.slice(0, 90).filter((x: any) => x && /^https:\/\//.test(String(x.url || ""))).map((x: any) => ({ n: Number(x.n) || 0, t: Number(x.t) || 0, url: String(x.url) }));
+    if (k.length) o.kadrlar = k;
+  }
+  if (Array.isArray(b.muqovalar)) { const m = b.muqovalar.map(String).filter((u: string) => /^https:\/\//.test(u)).slice(0, 4); if (m.length) o.muqovalar = m; }
+  return o;
+}
+// Ssenariy variantlari: v2 standart maydonlari (hooklar, ABT, kashfiyot, raqamlar, o'z bahosi, bir jumla, foyda) ham saqlanadi
+const SSENARIY_KALIT = ["nom", "maqsad", "trend", "hook", "format", "uzunlik", "soz", "dvigatel", "ovoz", "til", "xavf", "matn",
+  "hooklar", "abt", "kashfiyot", "raqamlar", "oz_baho", "bir_jumla", "foyda"];
+function ssenariyQiymat(k: string, v: unknown) {
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") { const j = JSON.stringify(v); return j.length <= 4000 ? v : j.slice(0, 4000); }
+  return String(v).slice(0, k === "matn" ? 9000 : 600);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ruxsat(req)) return res.status(401).json({ xato: "unauthorized" });
   try {
@@ -88,10 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(await apiJarayon(id, String(b.bosqich ?? ""), b.taxmin_daq ? Number(b.taxmin_daq) : undefined));
       case "natija":
         if (!b.matn) return res.status(400).json({ xato: "matn kerak" });
-        return res.status(200).json(await apiNatija(id, { matn: b.matn, ...(b.matnlar && typeof b.matnlar === "object" && JSON.stringify(b.matnlar).length < 12000 ? { matnlar: b.matnlar } : {}), ...(b.uslub_karta && typeof b.uslub_karta === "object" && JSON.stringify(b.uslub_karta).length < 6000 ? { uslub_karta: b.uslub_karta } : {}), ...(/^https:\/\//.test(String(b.ovoz_url || "")) ? { ovoz_url: String(b.ovoz_url) } : {}), ...(/^https:\/\//.test(String(b.vaqt_url || "")) ? { vaqt_url: String(b.vaqt_url) } : {}), ...(Array.isArray(b.vaqt) && JSON.stringify(b.vaqt).length < 12000 ? { vaqt: b.vaqt } : {}), ...(b.eshit && typeof b.eshit === "object" && JSON.stringify(b.eshit).length < 6000 ? { eshit: b.eshit } : {}), media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh, caption: b.caption, toliq_url: b.toliq_url, tg_matn: b.tg_matn, media_urls: Array.isArray(b.media_urls) ? b.media_urls.map(String) : undefined, qisqa: b.qisqa ? String(b.qisqa) : undefined, xotira: b.xotira ? String(b.xotira).slice(0, 600) : undefined, format: b.format === "uzun" || b.format === "shorts" ? b.format : undefined, davomiylik: Number(b.davomiylik) > 0 ? Number(b.davomiylik) : undefined, sarlavha: b.sarlavha ? String(b.sarlavha).slice(0, 100) : undefined, muqova: /^https:\/\//.test(String(b.muqova || "")) ? String(b.muqova) : undefined, reja_id: Number(b.reja_id) > 0 ? Number(b.reja_id) : undefined, ssenariylar: Array.isArray(b.ssenariylar) ? b.ssenariylar.slice(0, 4).map((x: any) => Object.fromEntries(Object.entries(x ?? {}).filter(([k]) => ["nom", "maqsad", "trend", "hook", "format", "uzunlik", "soz", "dvigatel", "ovoz", "til", "xavf", "matn"].includes(k)).map(([k, v]) => [k, typeof v === "number" ? v : String(v).slice(0, k === "matn" ? 9000 : 600)]))) : undefined, takliflar: Array.isArray(b.takliflar) ? b.takliflar.filter((t: any) => t?.matn && t?.buyruq).slice(0, 3).map((t: any) => ({ matn: String(t.matn), buyruq: String(t.buyruq) })) : undefined }));
+        return res.status(200).json(await apiNatija(id, { matn: b.matn, ...(b.matnlar && typeof b.matnlar === "object" && JSON.stringify(b.matnlar).length < 12000 ? { matnlar: b.matnlar } : {}), ...(b.uslub_karta && typeof b.uslub_karta === "object" && JSON.stringify(b.uslub_karta).length < 6000 ? { uslub_karta: b.uslub_karta } : {}), ...(/^https:\/\//.test(String(b.ovoz_url || "")) ? { ovoz_url: String(b.ovoz_url) } : {}), ...(/^https:\/\//.test(String(b.vaqt_url || "")) ? { vaqt_url: String(b.vaqt_url) } : {}), ...(Array.isArray(b.vaqt) && JSON.stringify(b.vaqt).length < 12000 ? { vaqt: b.vaqt } : {}), ...(b.eshit && typeof b.eshit === "object" && JSON.stringify(b.eshit).length < 6000 ? { eshit: b.eshit } : {}), ...kadrMaydonlari(b), media_url: b.media_url, media_tur: b.media_tur, izoh: b.izoh, caption: b.caption, toliq_url: b.toliq_url, tg_matn: b.tg_matn, media_urls: Array.isArray(b.media_urls) ? b.media_urls.map(String) : undefined, qisqa: b.qisqa ? String(b.qisqa) : undefined, xotira: b.xotira ? String(b.xotira).slice(0, 600) : undefined, format: b.format === "uzun" || b.format === "shorts" ? b.format : undefined, davomiylik: Number(b.davomiylik) > 0 ? Number(b.davomiylik) : undefined, sarlavha: b.sarlavha ? String(b.sarlavha).slice(0, 100) : undefined, muqova: /^https:\/\//.test(String(b.muqova || "")) ? String(b.muqova) : undefined, reja_id: Number(b.reja_id) > 0 ? Number(b.reja_id) : undefined, ssenariylar: Array.isArray(b.ssenariylar) ? b.ssenariylar.slice(0, 4).map((x: any) => Object.fromEntries(Object.entries(x ?? {}).filter(([k]) => SSENARIY_KALIT.includes(k)).map(([k, v]) => [k, ssenariyQiymat(k, v)]))) : undefined, takliflar: Array.isArray(b.takliflar) ? b.takliflar.filter((t: any) => t?.matn && t?.buyruq).slice(0, 3).map((t: any) => ({ matn: String(t.matn), buyruq: String(t.buyruq) })) : undefined }));
       case "natija_qosh": {
         // Natijaga jim qo'shimcha (xabar yubormaydi): masalan, tuzatilgan media_urls/tg_matn
-        const ruxsat = ["tg_matn", "caption", "media_urls", "media_url", "media_tur", "toliq_url", "ssenariylar", "xotira", "format", "davomiylik", "sarlavha", "muqova"];
+        const ruxsat = ["tg_matn", "caption", "media_urls", "media_url", "media_tur", "toliq_url", "ssenariylar", "xotira", "format", "davomiylik", "sarlavha", "muqova", "sahna_url", "varaq_url", "kadrlar", "muqovalar"];
         const qism = Object.fromEntries(Object.entries(b.natija ?? {}).filter(([k]) => ruxsat.includes(k)));
         await q(`update agent_vazifalar set natija = coalesce(natija,'{}'::jsonb) || $2::jsonb, updated_at = now() where id = $1`, [id, JSON.stringify(qism)]);
         return res.status(200).json({ ok: true, qoshildi: Object.keys(qism) });

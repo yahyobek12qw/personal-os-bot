@@ -465,7 +465,9 @@ export async function apiNavbat() {
   await q(`update agent_vazifalar set holat = 'navbatda', updated_at = now()
            where holat = 'ishlanmoqda' and updated_at < now() - interval '2 hours'`);
   return q(
-    `select v.id, v.loyiha, v.brend_id, (select nom from brendlar b where b.id = v.brend_id) brend, v.tur, v.buyruq, v.holat, v.natija, v.izohlar, v.urinish, v.ota_id, o.natija ota_natija,
+    `select v.id, v.loyiha, v.brend_id, (select nom from brendlar b where b.id = v.brend_id) brend, v.tur, v.bosqich, v.buyruq, v.holat, v.natija, v.izohlar, v.urinish, v.ota_id, o.natija ota_natija,
+            -- Model bo'linishi (egasi qarori 2026-11-27): ssenariy va video yasash — Opus; qolgan hamma ish (nazorat, reja, tahlil, joylash) — Sonnet
+            case when v.holat = 'navbatda' and (v.tur in ('video','kunlik','studio') or v.bosqich = 'ssenariy') then 'opus' else 'sonnet' end ishchi,
             to_char(v.created_at at time zone 'Asia/Tashkent','YYYY-MM-DD HH24:MI') yaratilgan
      from agent_vazifalar v left join agent_vazifalar o on o.id = v.ota_id
      where v.holat in ('navbatda','tasdiqlandi') and (v.kun is null or v.kun <= $1::date)
@@ -735,7 +737,7 @@ export async function apiJarayon(id: number, bosqich: string, taxminDaq?: number
   return { ok: true, qadam: idx + 1, jami: reja.length };
 }
 
-type Natija = { matn: string; matnlar?: Record<string, unknown>; uslub_karta?: Record<string, unknown>; ovoz_url?: string; vaqt_url?: string; vaqt?: unknown[]; eshit?: Record<string, unknown>; xotira?: string; format?: string; davomiylik?: number; sarlavha?: string; muqova?: string; reja_id?: number; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
+type Natija = { matn: string; sahna_url?: string; varaq_url?: string; kadrlar?: Array<{ n: number; t: number; url: string }>; muqovalar?: string[]; matnlar?: Record<string, unknown>; uslub_karta?: Record<string, unknown>; ovoz_url?: string; vaqt_url?: string; vaqt?: unknown[]; eshit?: Record<string, unknown>; xotira?: string; format?: string; davomiylik?: number; sarlavha?: string; muqova?: string; reja_id?: number; ssenariylar?: Array<Record<string, unknown>>; media_url?: string; media_tur?: "rasm" | "video" | "fayl"; izoh?: string; caption?: string; toliq_url?: string; tg_matn?: string; media_urls?: string[]; qisqa?: string; takliflar?: { matn: string; buyruq: string }[] };
 
 // Tasdiq xabarida: Instagram caption va Telegram matni alohida
 function ikkiMatn(n: Natija) {
